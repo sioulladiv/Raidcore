@@ -1,0 +1,6 @@
+2 wall_top_mid.png
+1 wall_top_left.png
+323 wall_edge_mid_right.png
+322 wall_edge_mid_left.png
+290 wall_edge_left.png
+291 wall_edge_right.png

@@ -1,0 +1,50 @@
+some cool textures
+https://fightzio.fandom.com/wiki/Weapons
+cool map editor
+https://www.spritefusion.com/editor
+video for using tiled in pygame
+https://www.youtube.com/watch?v=37phHwLtaFg&t=8s
+https://www.youtube.com/watch?v=N6xqCwblyiw
+cool character assets: 
+https://rgsdev.itch.io/free-cc0-modular-animated-vector-characters-2d
+Cool game made with assets: 
+https://lgirard.itch.io/dungeon-shooter-game-test
+https://goblin-mode-games.itch.io/storm-the-dungeon
+https://timolde.itch.io/robbin-hood-wants-to-get-rich
+
+https://forum.cocosengine.org/t/collision-of-a-certain-layer-of-the-map-editor-tiled-map-tmx/49878
+
+https://www.trccompsci.online/mediawiki/index.php/PyGame_Platform
+
+cool free music: 
+https://alkakrab.itch.io/
+
+to make cool soundeffects:
+https://sfxr.me/
+
+Biomes
+Name
+
+Color
+
+Location
+
+Closest Safezone
+
+Grassland			Starting Safezone
+Snow Biome			Jungle Safezone
+Goblin Village			Starting Safezone
+North Desert			Oasis Safezone
+South Desert			Mechanical Safezone
+Jungle			Jungle Safezone
+Dragon Zone			Death Safezone
+Undead Land			Oasis Safezone
+Rocky Mountains			Death Safezone
+Forest			Mechanical Safezone
+Graveyard			Oasis Safezone
+Crystal Lair (RIP)			Viking Safezone
+Demon Lair			Oasis Safezone
+Viking Village			Viking Safezone
+Insect Jungle			Death Safezone
+Moss Jungle			Death Safezone
+Frost Lair			Viking Safezone
