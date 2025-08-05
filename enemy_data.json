@@ -1,0 +1,21 @@
+{
+    "chort": {
+        "lives": 3,
+        "speed": 2,
+        "damage": 1,
+        "detection_range": 150,
+        "attack_cooldown": 500,
+        "width": 16,
+        "height": 28,
+        "animations": {
+            "idle": {
+                "frames": 4
+            },
+            "run": {
+                "frames": 4
+            }
+        },
+        "frame_path": "./Dungeon/frames/chort",
+        "xp_reward": 10
+    }
+}

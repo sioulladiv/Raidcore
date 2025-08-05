@@ -3,6 +3,11 @@ from pytmx.util_pygame import load_pygame
 import math
 from ScreenElement import healthBar
 from menu import BunkerMenu
+from Ennemy import Enemy
+import json
+
+with open("enemy_data.json", "r") as f:
+    enemy_data = json.load(f)
 
 class TiledMap:
     def __init__(self, filename):
@@ -339,6 +344,14 @@ class Bullet:
         
         surface.blit(rotated_image, image_rect)
 
+    def get_rect(self):
+        return pygame.Rect(
+            self.x - self.radius,
+            self.y - self.radius,
+            self.radius * 2,
+            self.radius * 2
+        )
+
 class Player:
     def __init__(self, x, y, width, height, color):
         self.x = x
@@ -372,7 +385,8 @@ class Player:
             img = pygame.transform.scale(img, (width, height))
             self.walk_frames.append(img)
 
-    def update(self, keys, tiles):
+    def update(self, keys, tiles):  
+        print(f"x:{self.x} y:{self.y}")
         self.is_moving = False
         dx, dy = 0, 0
         
@@ -489,6 +503,13 @@ def run_game():
     player_x = game_map.width // 2
     player_y = game_map.height // 2
     player = Player(player_x, player_y, 16, 28, (255, 0, 0))
+    
+    enemies = []
+    for i in range(2): 
+        enemy_type = "chort"
+        data = enemy_data[enemy_type]
+        enemies.append(Enemy(player_x + (50 * i), player_y + (50 * i), enemy_type))
+    
     zoom_level = 8 
     camera = Camera(screen_width, screen_height, zoom_level)
     clock = pygame.time.Clock()
@@ -512,6 +533,10 @@ def run_game():
         camera.update(player)
         light.update(player, camera)
         
+        for enemy in list(enemies): 
+            enemy.update(keys, collision_tiles, player, enemies, gun.bullets) 
+            enemy.update_animation(dt)
+        
         screen.fill((90, 90, 90))
         
         scaled_width = int(map_surface.get_width() * camera.zoom)
@@ -523,6 +548,10 @@ def run_game():
             screen.blit(map_surface, (camera.offset_x, camera.offset_y))
         
         player.draw(screen, camera)
+        
+        for enemy in enemies:
+            enemy.draw(screen, camera)
+            
         light.draw(screen, camera)
         gun.draw(screen, camera, player, dt) 
 
