@@ -22,29 +22,4 @@ https://alkakrab.itch.io/
 to make cool soundeffects:
 https://sfxr.me/
 
-Biomes
-Name
-
-Color
-
-Location
-
-Closest Safezone
-
-Grassland			Starting Safezone
-Snow Biome			Jungle Safezone
-Goblin Village			Starting Safezone
-North Desert			Oasis Safezone
-South Desert			Mechanical Safezone
-Jungle			Jungle Safezone
-Dragon Zone			Death Safezone
-Undead Land			Oasis Safezone
-Rocky Mountains			Death Safezone
-Forest			Mechanical Safezone
-Graveyard			Oasis Safezone
-Crystal Lair (RIP)			Viking Safezone
-Demon Lair			Oasis Safezone
-Viking Village			Viking Safezone
-Insect Jungle			Death Safezone
-Moss Jungle			Death Safezone
-Frost Lair			Viking Safezone
+puzzle game ideas: paper 2 2017 question 20

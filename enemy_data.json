@@ -16,6 +16,21 @@
             }
         },
         "frame_path": "./Dungeon/frames/chort",
-        "xp_reward": 10
+        "xp_reward": 10,
+        "spawn_locations": {
+            "level1": [
+            ],
+            "level2": [
+                {"x": 200, "y": 200},
+                {"x": 500, "y": 350},
+                {"x": 700, "y": 500}
+            ],
+            "level3": [
+                {"x": 300, "y": 250},
+                {"x": 450, "y": 400},
+                {"x": 650, "y": 300},
+                {"x": 800, "y": 450}
+            ]
+        }
     }
 }

@@ -5,9 +5,278 @@ from ScreenElement import healthBar
 from menu import BunkerMenu
 from Ennemy import Enemy
 import json
+import os
 
 with open("enemy_data.json", "r") as f:
     enemy_data = json.load(f)
+
+
+class Game:
+    def __init__(self, screen_width, screen_height, zoom_level=1.0):  # Fixed typo in __init_
+        pygame.init()
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.zoom_level = zoom_level
+        self.screen = pygame.display.set_mode((screen_width, screen_height))
+        self.level = 1
+        pygame.display.set_caption("Dungeon Game")
+        
+        self.game_map = TiledMap("Tiled/level{}.tmx".format(self.level))
+        self.camera = Camera(screen_width, screen_height, zoom_level)
+        
+        self.player = Player(100, 100, 32, 32, (0, 255, 0))
+        self.enemies = []
+        self.bullets = []
+        
+        self.light = Lighting(200)
+         
+        self.health_bar = healthBar(10, 10, 100, 20)
+        
+        self.menu = BunkerMenu(self.screen_width // 2 - 150, self.screen_height // 2 - 150)
+        self.transition_timer = 0
+
+        self.lightlevel = 210
+        
+        self.fade_overlay_alpha = 0
+        self.fade_overlay_duration = 1000  
+        self.fade_overlay_timer = 0
+        self.fade_overlay_active = False
+
+        self.press_e_image = pygame.image.load("Assets/press_e.png")
+        self.press_e_image = pygame.transform.scale(self.press_e_image, (240, 192))  
+        self.show_press_e = False
+
+        # Add book overlay properties
+        self.book_image = pygame.image.load("Assets/book.png")
+        book_width = screen_width - 200  # Leave 100px margin on each side
+        book_height = screen_height - 200  # Leave 100px margin on top/bottom
+        self.book_image = pygame.transform.scale(self.book_image, (book_width, book_height))
+        self.show_book = False
+        self.book_x = 100  # Center position
+        self.book_y = 100
+
+    def run(self):
+        pygame.init()
+        screen_width, screen_height = 2560, 1440
+        screen = pygame.display.set_mode((screen_width, screen_height))
+        pygame.display.set_caption("Dungeon Escape")
+
+        FPS = 60
+        health_bar = healthBar(50, 50, 100, 100)
+        health_bar.update(100)  
+        light = Lighting(350)
+        map_surface = self.game_map.make_map()
+        try:
+            collision_tiles = self.game_map.collision_layer(["wall lining", "wall lining2"])
+        except Exception as e:
+            collision_tiles = self.game_map.collision_layer(["wall lining"])
+
+        gun = Gun(0, 0, "pistol")
+        player_x = self.game_map.width // 2
+        player_y = self.game_map.height // 2
+        self.player = Player(player_x, player_y, 16, 28, (255, 0, 0))
+
+        enemies = []
+        # Load enemies for current level
+        self.load_enemies_for_level(enemies)
+
+        #for i in range(2): 
+        #    enemy_type = "chort"
+         #   data = enemy_data[enemy_type]
+        #    enemies.append(Enemy(player_x + (50 * i), player_y + (50 * i), enemy_type))
+
+        zoom_level = 8 
+        camera = Camera(screen_width, screen_height, zoom_level)
+        clock = pygame.time.Clock()
+        running = True
+
+        map_surface = self.game_map.make_map()
+        try:
+            collision_tiles = self.game_map.collision_layer(["wall lining", "wall lining2"])
+        except Exception as e:
+            collision_tiles = self.game_map.collision_layer(["wall lining"])
+        endlevel_tiles = self.game_map.endlevel_layer("endlevel")
+
+        chest_data = self.game_map.chests_layer("chests")
+        self.chests = []
+        for chest_info in chest_data:
+            chest = Chest(chest_info['x'], chest_info['y'], chest_info['type'])
+            self.chests.append(chest)
+
+        while running:
+            dt = clock.tick(FPS)
+            gun.update(camera, self.player, dt, collision_tiles) 
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_e:
+                        if self.show_book:
+                            self.show_book = False
+                        elif self.show_press_e:
+                            for chest in self.chests:
+                                if chest.is_near_player(self.player):
+                                    self.show_book = True
+                                    break
+                            
+            self.player.update_animation(dt)
+            health_bar.update_animation(dt) 
+
+            keys = pygame.key.get_pressed()
+
+            if keys[pygame.K_t]:
+                health_bar.damage(2)  
+
+            if not self.show_book:
+                self.player.update(keys, collision_tiles, endlevel_tiles, self)
+                camera.update(self.player)
+                light.update(self.player, camera, self.lightlevel)
+
+                self.show_press_e = False
+                for chest in self.chests:
+                    if chest.is_near_player(self.player):
+                        self.show_press_e = True
+
+                for enemy in list(enemies): 
+                    enemy.update(keys, collision_tiles, self.player, enemies, gun.bullets) 
+                    enemy.update_animation(dt)
+
+            if self.fade_overlay_active:
+                self.fade_overlay_timer += dt
+                progress = self.fade_overlay_timer / self.fade_overlay_duration
+                if progress >= 1.0:
+                    self.fade_overlay_active = False
+                    self.fade_overlay_alpha = 0
+                else:
+                    self.fade_overlay_alpha = int(255 * (1 - progress))
+
+            screen.fill((90, 90, 90))
+
+            scaled_width = int(map_surface.get_width() * camera.zoom)
+            scaled_height = int(map_surface.get_height() * camera.zoom)
+            if camera.zoom != 1.0:
+                scaled_surface = pygame.transform.scale(map_surface, (scaled_width, scaled_height))
+                screen.blit(scaled_surface, (camera.offset_x, camera.offset_y))
+            else:
+                screen.blit(map_surface, (camera.offset_x, camera.offset_y))
+
+            self.player.draw(screen, camera)
+
+
+            for enemy in enemies:
+                enemy.draw(screen, camera)
+
+            light.draw(screen, camera)
+            gun.draw(screen, camera, self.player, dt)
+
+            health_bar.draw(screen)  
+
+            if self.show_press_e and not self.show_book:
+                prompt_x = 40  
+                prompt_y = screen_height - 300  
+                screen.blit(self.press_e_image, (prompt_x, prompt_y))
+
+            if self.show_book:
+                screen.blit(self.book_image, (self.book_x, self.book_y))
+
+            if self.fade_overlay_active and self.fade_overlay_alpha > 0:
+                fade_surface = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+                fade_surface.fill((0, 0, 0, self.fade_overlay_alpha))
+                screen.blit(fade_surface, (0, 0))
+
+            pygame.display.flip()
+
+            if map_surface != self.game_map.make_map():
+                map_surface = self.game_map.make_map()
+                try:
+                    collision_tiles = self.game_map.collision_layer(["wall lining", "wall lining2"])
+                except Exception as e:
+                    collision_tiles = self.game_map.collision_layer(["wall lining"])
+                endlevel_tiles = self.game_map.endlevel_layer("endlevel")
+
+        pygame.quit()
+
+    def next_level(self):
+
+        self.enemies.clear()
+        self.player.x = 100
+        self.player.y = 100
+        self.camera.offset_x = 0
+        self.camera.offset_y = 0
+        self.camera.zoom = 1.0
+        
+        self.camera.width = self.screen_width
+        self.camera.height = self.screen_height
+        self.level_transition()
+
+
+    def level_transition(self):
+        self.transition_timer = 500
+        fade_surface = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        clock = pygame.time.Clock() 
+
+        # Fade out
+        fade_out_duration = 1000 
+        fade_out_start = pygame.time.get_ticks()
+        while True:
+            dt = clock.tick(60) 
+            elapsed = pygame.time.get_ticks() - fade_out_start
+            if elapsed > fade_out_duration:
+                break
+            
+            # Smoother easing function
+            progress = elapsed / fade_out_duration
+            alpha = int(255 * (progress ** 0.5))  
+            
+            fade_surface.fill((0, 0, 0, alpha))
+            self.screen.blit(fade_surface, (0, 0))
+            pygame.display.flip()
+
+        self.level += 1
+        print("Transitioning from level {} to {}".format(self.level-1, self.level))
+        next_level_path = f"Tiled/level{self.level}.tmx"
+        print(next_level_path)
+
+        try:
+            self.game_map = TiledMap(next_level_path)
+        except FileNotFoundError:
+            print(f"No more levels. File not found: {next_level_path}")
+            return
+
+        self.player.x = self.game_map.width // 2 - self.player.width // 2
+        self.player.y = self.game_map.height // 2 - self.player.height // 2
+
+        # Reload chests for the new level
+        chest_data = self.game_map.chests_layer("chests")
+        self.chests = []
+        for chest_info in chest_data:
+            chest = Chest(chest_info['x'], chest_info['y'], chest_info['type'])
+            self.chests.append(chest)
+
+        # Clear and reload enemies for the new level
+        self.enemies.clear()
+        self.load_enemies_for_level(self.enemies)
+
+        self.zoom_level = 8.0
+        self.camera.zoom = self.zoom_level
+        self.camera.update(self.player)
+
+        self.fade_overlay_active = True
+        self.fade_overlay_alpha = 255
+        self.fade_overlay_timer = 0
+
+    def spawn_enemy(self, x, y, enemy_type):
+        data = enemy_data[enemy_type]
+        enemy = Enemy(x, y, enemy_type)
+        self.enemies.append(enemy)
+       
+    def load_enemies_for_level(self, enemies):
+        level_key = f"level{self.level}"
+        for enemy_type, data in enemy_data.items():
+            if "spawn_locations" in data and level_key in data["spawn_locations"]:
+                for spawn_point in data["spawn_locations"][level_key]:
+                    enemy = Enemy(spawn_point["x"], spawn_point["y"], enemy_type)
+                    enemies.append(enemy)
 
 class TiledMap:
     def __init__(self, filename):
@@ -54,6 +323,36 @@ class TiledMap:
                         self.tmx_data.tileheight
                     ))
         return self.collision_tiles
+    
+    def endlevel_layer(self, layer_name: str):
+        self.endlevel_tiles = []
+        layer = self.tmx_data.get_layer_by_name(layer_name)
+        for x, y, gid in layer:
+            tile_image = self.tmx_data.get_tile_image_by_gid(gid)
+            if tile_image:
+                self.endlevel_tiles.append(pygame.Rect(
+                    x * self.tmx_data.tilewidth, 
+                    y * self.tmx_data.tileheight, 
+                    self.tmx_data.tilewidth, 
+                    self.tmx_data.tileheight
+                ))
+        return self.endlevel_tiles
+
+    def chests_layer(self, layer_name: str):
+        self.chest_tiles = []
+        try:
+            layer = self.tmx_data.get_layer_by_name(layer_name)
+            for x, y, gid in layer:
+                tile_image = self.tmx_data.get_tile_image_by_gid(gid)
+                if tile_image:
+                    self.chest_tiles.append({
+                        'x': x * self.tmx_data.tilewidth,
+                        'y': y * self.tmx_data.tileheight,
+                        'type': 'treasure'  
+                    })
+        except ValueError:
+            print(f"Chest layer '{layer_name}' not found.")
+        return self.chest_tiles
 
     def make_map(self):
         map_surface = pygame.Surface((self.width, self.height))
@@ -70,17 +369,19 @@ class Tile:
         surface.blit(self.image, draw_pos)
 
 class Lighting:
-    def __init__(self, radius):
+    def __init__(self, radius, darkness=210):
         self.radius = radius
-        self.darkness = 210 
-        
+        self.darkness = darkness
+
         self.surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
         
         for r in range(radius):
             alpha = int((r / radius) * self.darkness)
             pygame.draw.circle(self.surface, (0, 255, 0, alpha), (radius, radius), radius - r)
-            
-    def update(self, player, camera):
+
+    def update(self, player, camera, darkness=210):
+        self.darkness = darkness
+
         player_center_x = player.x + (player.width / 2)
         player_center_y = player.y + (player.height / 2)
         
@@ -140,7 +441,7 @@ class Items:
 
 
 class Gun(Items):
-    def __init__(self, x, y, type, height=70, width=70): 
+    def __init__(self, x, y, type, height=122, width=70): 
         super().__init__(x, y, type, height, width)
         self.type = type
         self.ammo = 0
@@ -153,7 +454,8 @@ class Gun(Items):
         self.angle = 0
         self.y_offset = 5
         self.orbit_distance = 5  
-        self.angle_offset = 0.15
+        self.angle_offset = 0
+
         self.bullets = []
         self.can_shoot = True
 
@@ -167,7 +469,7 @@ class Gun(Items):
             self.image = pygame.image.load("./Dungeon/frames/pistol.png")
             self.image = pygame.transform.scale(self.image, (width, height))
     
-    def update(self, camera=None, player=None, dt=0):
+    def update(self, camera=None, player=None, dt=0, collision_tiles=None):
         if not hasattr(self, 'pointing_left'):
             self.pointing_left = False
         
@@ -205,7 +507,11 @@ class Gun(Items):
             self.angle = math.atan2(mouse_y - self.y, mouse_x - self.x)
 
         for bullet in list(self.bullets):
-            bullet.update(dt)
+            bullet.update(dt, collision_tiles)
+            
+            if not bullet.alive:
+                self.bullets.remove(bullet)
+                continue
             
             if camera:
                 margin = 300  
@@ -264,7 +570,7 @@ class Gun(Items):
             barrel_x = self.x + math.cos(self.bullet_angle) * (barrel_length-4)
             barrel_y = self.y + math.sin(self.bullet_angle) * (barrel_length-4)
             
-
+            bullet_angle = math.atan2(world_mouse_y - barrel_y, world_mouse_x - barrel_x)
             bullet = Bullet(
                 barrel_x,
                 barrel_y,
@@ -275,7 +581,6 @@ class Gun(Items):
             )
             self.bullets.append(bullet)
         
-        # Draw all bullets
         for bullet in self.bullets:
             bullet.draw(surface, camera)
 
@@ -302,11 +607,18 @@ class Bullet:
             img = pygame.transform.scale(img, (radius * 4, radius * 4))  
             self.animation.append(img)
         
-    def update(self, dt=16):  
-        self.x += math.cos(self.angle) * self.speed
-        self.y += math.sin(self.angle) * self.speed
+    def update(self, dt=16, collision_tiles=None):  
+        # Calculate movement
+        dx = math.cos(self.angle) * self.speed
+        dy = math.sin(self.angle) * self.speed
         
-        # Update trail
+        # Move and check for collisions
+        if collision_tiles:
+            self.move_and_collide(dx, dy, collision_tiles)
+        else:
+            self.x += dx
+            self.y += dy
+        
         self.trail.append((self.x, self.y))
         if len(self.trail) > self.trail_length:
             self.trail.pop(0)
@@ -343,6 +655,32 @@ class Bullet:
         image_rect.center = (int(screen_x), int(screen_y))
         
         surface.blit(rotated_image, image_rect)
+    
+    def move_and_collide(self, dx, dy, tiles):
+        new_x = self.x + dx
+        bullet_rect = pygame.Rect(new_x - self.radius, self.y - self.radius, self.radius * 2, self.radius * 2)
+        
+        collision = False
+        for wall in tiles:
+            if bullet_rect.colliderect(wall):
+                collision = True
+                break
+        
+        if not collision:
+            self.x = new_x
+        else:
+            self.alive = False
+            return
+            
+        new_y = self.y + dy
+        bullet_rect = pygame.Rect(self.x - self.radius, new_y - self.radius, self.radius * 2, self.radius * 2)
+        
+        for wall in tiles:
+            if bullet_rect.colliderect(wall):
+                self.alive = False
+                return
+        
+        self.y = new_y
 
     def get_rect(self):
         return pygame.Rect(
@@ -351,6 +689,38 @@ class Bullet:
             self.radius * 2,
             self.radius * 2
         )
+
+class Chest:
+    def __init__(self, x, y, task_type, height=32, width=32):
+        self.type = task_type
+        self.x = x
+        self.y = y
+        self.height = height
+        self.width = width
+        self.proximity_distance = 32
+        self.interaction_distance = 32
+
+    def get_rect(self):
+        return pygame.Rect(self.x, self.y, self.width, self.height)
+
+    def get_distance_to_player(self, player):
+        chest_center_x = self.x + self.width // 2
+        chest_center_y = self.y + self.height // 2
+        player_center_x = player.x + player.width // 2
+        player_center_y = player.y + player.height // 2
+        
+        dx = chest_center_x - player_center_x
+        dy = chest_center_y - player_center_y
+        return math.sqrt(dx * dx + dy * dy)
+
+    def is_near_player(self, player):
+        return self.get_distance_to_player(player) <= self.proximity_distance
+
+    def is_touching_player(self, player):
+        return self.get_distance_to_player(player) <= self.interaction_distance
+
+    def update(self, player, dt, keys=None):
+        return False
 
 class Player:
     def __init__(self, x, y, width, height, color):
@@ -385,8 +755,7 @@ class Player:
             img = pygame.transform.scale(img, (width, height))
             self.walk_frames.append(img)
 
-    def update(self, keys, tiles):  
-        print(f"x:{self.x} y:{self.y}")
+    def update(self, keys, tiles,endlevel_tiles, game):  
         self.is_moving = False
         dx, dy = 0, 0
         
@@ -421,6 +790,11 @@ class Player:
             dy *= 0.7071
         
         self.move_and_collide(dx, dy, tiles)
+
+        for tile in endlevel_tiles:
+            if self.get_rect(self.x, self.y).colliderect(tile):
+                print("next level")
+                game.next_level()
 
     def move_and_collide(self, dx, dy, tiles):
         self.x += dx
@@ -485,91 +859,19 @@ class Player:
         else:
             surface.blit(current_img, (self.x, self.y))
 
-def run_game():
-    pygame.init()
-    screen_width, screen_height = 2560, 1440
-    screen = pygame.display.set_mode((screen_width, screen_height))
-    pygame.display.set_caption("Tiled Map Example")
-    
-    FPS = 60
-    health_bar = healthBar(50, 50, 100, 100)
-    health_bar.update(100)  
-    light = Lighting(350)
-    game_map = TiledMap("./Tiled/level1.tmx")
-    map_surface = game_map.make_map()
-    collision_tiles = game_map.collision_layer(["wall lining","wall lining2"])
-    
-    gun = Gun(0, 0, "pistol")
-    player_x = game_map.width // 2
-    player_y = game_map.height // 2
-    player = Player(player_x, player_y, 16, 28, (255, 0, 0))
-    
-    enemies = []
-    for i in range(2): 
-        enemy_type = "chort"
-        data = enemy_data[enemy_type]
-        enemies.append(Enemy(player_x + (50 * i), player_y + (50 * i), enemy_type))
-    
-    zoom_level = 8 
-    camera = Camera(screen_width, screen_height, zoom_level)
-    clock = pygame.time.Clock()
-    running = True
-    
-    while running:
-        dt = clock.tick(FPS)
-        gun.update(camera, player, dt) 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-        player.update_animation(dt)
-        health_bar.update_animation(dt) 
-        
-        keys = pygame.key.get_pressed()
-        
-        if keys[pygame.K_t]:
-            health_bar.damage(2)  
-            
-        player.update(keys, collision_tiles)  
-        camera.update(player)
-        light.update(player, camera)
-        
-        for enemy in list(enemies): 
-            enemy.update(keys, collision_tiles, player, enemies, gun.bullets) 
-            enemy.update_animation(dt)
-        
-        screen.fill((90, 90, 90))
-        
-        scaled_width = int(map_surface.get_width() * camera.zoom)
-        scaled_height = int(map_surface.get_height() * camera.zoom)
-        if camera.zoom != 1.0:
-            scaled_surface = pygame.transform.scale(map_surface, (scaled_width, scaled_height))
-            screen.blit(scaled_surface, (camera.offset_x, camera.offset_y))
-        else:
-            screen.blit(map_surface, (camera.offset_x, camera.offset_y))
-        
-        player.draw(screen, camera)
-        
-        for enemy in enemies:
-            enemy.draw(screen, camera)
-            
-        light.draw(screen, camera)
-        gun.draw(screen, camera, player, dt) 
 
-        health_bar.draw(screen)  
-
-        pygame.display.flip()
-    
-    pygame.quit()
 
 if __name__ == "__main__":
     menu = BunkerMenu(2560, 1440)
     menu_result = menu.run()
+    game = Game(2560, 1440, zoom_level=1.0)
     
     if menu_result == "start_game":
-        run_game()
+        game.run()
     elif menu_result == "continue":
-        run_game()
+        game.run()
     elif menu_result == "options":
         print("not done yet")
     else: 
         print("Exiting game")
+        game.run()
