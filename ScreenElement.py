@@ -8,13 +8,18 @@ class healthBar:
         self.life = 100
         self.previous_life = 100
         self.frames = []
-        for i in range(1, 14):
-            img = pygame.image.load(f"./Dungeon/ScreenElement/sprite_heart{'0' + str(i) if i < 10 else str(i)}.png")
+        
+        heart_images = [
+            "./Dungeon/frames/ui_heart_full.png",
+            "./Dungeon/frames/ui_heart_half.png", 
+            "./Dungeon/frames/ui_heart_empty.png"
+        ]
+        for img_path in heart_images:
+            img = pygame.image.load(img_path)
             img = pygame.transform.scale(img, (width, height))
             self.frames.append(img)
         
-       
-        self.heart_states = [0, 0, 0, 0, 0]  
+        self.heart_states = [0, 0, 0, 0, 0]  # 0=full, 1=half, 2=empty
         self.target_states = [0, 0, 0, 0, 0]  
         self.animation_speed = 0.2  
         self.animation_timer = 0
@@ -29,12 +34,11 @@ class healthBar:
                 remaining_health_percent = max(0, min(100, self.life - (i * health_per_heart)))
                 
                 if remaining_health_percent >= health_per_heart:
-                    self.target_states[i] = 0
+                    self.target_states[i] = 0  
                 elif remaining_health_percent <= 0:
-                    self.target_states[i] = len(self.frames) - 1
+                    self.target_states[i] = 2  
                 else:
-                    percentage_of_heart = remaining_health_percent / health_per_heart
-                    self.target_states[i] = int((1 - percentage_of_heart) * (len(self.frames) - 1))
+                    self.target_states[i] = 1  
         
     def damage(self, damage):
         self.update(self.life - damage)

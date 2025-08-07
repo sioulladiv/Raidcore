@@ -3,12 +3,19 @@ from pytmx.util_pygame import load_pygame
 import math
 from ScreenElement import healthBar
 from menu import BunkerMenu
-from Ennemy import Enemy
 import json
 import os
+import random
+
+from pathfinding.core.grid import Grid
+from pathfinding.finder.a_star import AStarFinder
+from pathfinding.core.diagonal_movement import DiagonalMovement
+
 
 with open("enemy_data.json", "r") as f:
     enemy_data = json.load(f)
+
+tile_size = 16
 
 
 class Game:
@@ -45,6 +52,8 @@ class Game:
         self.press_e_image = pygame.image.load("Assets/press_e.png")
         self.press_e_image = pygame.transform.scale(self.press_e_image, (240, 192))  
         self.show_press_e = False
+        self.path_grid = self.make_path_grid()
+        print(self.path_grid)  
 
         # Add book overlay properties
         self.book_image = pygame.image.load("Assets/book.png")
@@ -76,9 +85,8 @@ class Game:
         player_y = self.game_map.height // 2
         self.player = Player(player_x, player_y, 16, 28, (255, 0, 0))
 
-        enemies = []
-        # Load enemies for current level
-        self.load_enemies_for_level(enemies)
+        # Load enemies for current level into self.enemies
+        self.load_enemies_for_level(self.enemies)
 
         #for i in range(2): 
         #    enemy_type = "chort"
@@ -137,8 +145,8 @@ class Game:
                     if chest.is_near_player(self.player):
                         self.show_press_e = True
 
-                for enemy in list(enemies): 
-                    enemy.update(keys, collision_tiles, self.player, enemies, gun.bullets) 
+                for enemy in list(self.enemies): 
+                    enemy.update(keys, collision_tiles, self.player, self.enemies, self.path_grid, gun.bullets, health_bar) 
                     enemy.update_animation(dt)
 
             if self.fade_overlay_active:
@@ -163,7 +171,7 @@ class Game:
             self.player.draw(screen, camera)
 
 
-            for enemy in enemies:
+            for enemy in self.enemies:
                 enemy.draw(screen, camera)
 
             light.draw(screen, camera)
@@ -215,7 +223,6 @@ class Game:
         fade_surface = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
         clock = pygame.time.Clock() 
 
-        # Fade out
         fade_out_duration = 1000 
         fade_out_start = pygame.time.get_ticks()
         while True:
@@ -224,7 +231,6 @@ class Game:
             if elapsed > fade_out_duration:
                 break
             
-            # Smoother easing function
             progress = elapsed / fade_out_duration
             alpha = int(255 * (progress ** 0.5))  
             
@@ -239,6 +245,7 @@ class Game:
 
         try:
             self.game_map = TiledMap(next_level_path)
+            self.path_grid = self.make_path_grid()
         except FileNotFoundError:
             print(f"No more levels. File not found: {next_level_path}")
             return
@@ -246,14 +253,12 @@ class Game:
         self.player.x = self.game_map.width // 2 - self.player.width // 2
         self.player.y = self.game_map.height // 2 - self.player.height // 2
 
-        # Reload chests for the new level
         chest_data = self.game_map.chests_layer("chests")
         self.chests = []
         for chest_info in chest_data:
             chest = Chest(chest_info['x'], chest_info['y'], chest_info['type'])
             self.chests.append(chest)
 
-        # Clear and reload enemies for the new level
         self.enemies.clear()
         self.load_enemies_for_level(self.enemies)
 
@@ -270,13 +275,293 @@ class Game:
         enemy = Enemy(x, y, enemy_type)
         self.enemies.append(enemy)
        
-    def load_enemies_for_level(self, enemies):
+    def load_enemies_for_level(self, enemies_list):
         level_key = f"level{self.level}"
         for enemy_type, data in enemy_data.items():
             if "spawn_locations" in data and level_key in data["spawn_locations"]:
                 for spawn_point in data["spawn_locations"][level_key]:
                     enemy = Enemy(spawn_point["x"], spawn_point["y"], enemy_type)
-                    enemies.append(enemy)
+                    enemies_list.append(enemy)
+                    print(f"Spawned {enemy_type} at ({spawn_point['x']}, {spawn_point['y']})")
+
+        #for i in range(2): 
+        #    enemy_type = "chort"
+         #   data = enemy_data[enemy_type]
+        #    enemies.append(Enemy(player_x + (50 * i), player_y + (50 * i), enemy_type))
+        
+    def make_path_grid(self):
+        walkable_tiles = []
+        enemy_width_tiles = 1  
+        enemy_height_tiles = 2  
+
+        for y in range(self.game_map.tmx_data.height):
+            row = []
+            for x in range(self.game_map.tmx_data.width):
+                blocked = False
+
+                # Check if this tile or surrounding tiles (for enemy size) are blocked
+                for check_y in range(max(0, y), min(self.game_map.tmx_data.height, y + enemy_height_tiles)):
+                    for check_x in range(max(0, x), min(self.game_map.tmx_data.width, x + enemy_width_tiles)):
+                        try:
+                            for layer_name in ["wall lining", "wall lining2"]:
+                                layer = self.game_map.tmx_data.get_layer_by_name(layer_name)
+                                tile_grid = layer.data[check_y][check_x]
+                                if tile_grid:
+                                    blocked = True
+                                    break
+                            if blocked:
+                                break
+                        except:
+                            try:
+                                layer = self.game_map.tmx_data.get_layer_by_name("wall lining")
+                                tile_grid = layer.data[check_y][check_x]
+                                if tile_grid:
+                                    blocked = True
+                                    break
+                            except:
+                                pass
+                    if blocked:
+                        break
+                    
+                row.append(1 if not blocked else 0)
+            walkable_tiles.append(row)
+        return walkable_tiles
+
+class Enemy:
+    def __init__(self, x, y, Ennemytype='chort'):
+        data = enemy_data[Ennemytype]
+        self.x = x
+        self.y = y
+        self.width = data["width"]
+        self.height = data["height"]
+        self.speed = data["speed"]
+        self.lives = data["lives"]
+        self.color = (255, 0, 0)
+        self.hit_timer = 0
+        self.type = Ennemytype
+        self.detection_range = data["detection_range"]
+        self.path_find_timer = 0
+        self.path_arr_index = 0
+        self.collision_slowdown_timer = 0
+        self.original_speed = self.speed
+        
+        self.current_frame = 0
+        self.animation_timer = 0
+        self.animation_speed = data["animations"]["idle"]["frames"] * 20
+        self.is_moving = False
+        self.facing_dir = 0
+        self.collision_width = int(self.width * 0.7)
+        self.collision_height = int(self.height * 0.6)
+        self.collision_offset_x = (self.width - self.collision_width) // 2
+        self.collision_offset_y = self.height - self.collision_height - 2
+
+        self.health_bar = healthBar(x, y - 20, self.width, 10)
+    
+        self.idle_frames = []
+        for i in range(data["animations"]["idle"]["frames"]):
+            img = pygame.image.load(f"{data['frame_path']}_idle_anim_f{i}.png")
+            img = pygame.transform.scale(img, (self.width, self.height))
+            self.idle_frames.append(img)
+
+        self.walk_frames = []
+        for i in range(data["animations"]["run"]["frames"]):
+            img = pygame.image.load(f"{data['frame_path']}_run_anim_f{i}.png")
+            img = pygame.transform.scale(img, (self.width, self.height))
+            self.walk_frames.append(img)
+
+    def update_pathfinding(self, player, collision_grid):
+        if not hasattr(self, 'path'):
+            self.path = []
+            self.path_arr_index = 0
+
+        self.path_find_timer = 0
+        grid = Grid(matrix=collision_grid)
+        start_x = int((self.x + self.width // 2) // 16)
+        start_y = int((self.y + self.height // 2) // 16)
+        end_x = int((player.x + player.width // 2) // 16)
+        end_y = int((player.y + player.height // 2) // 16)
+
+        grid_width = len(collision_grid[0])
+        grid_height = len(collision_grid)
+        start_x = max(0, min(start_x, grid_width - 1))
+        start_y = max(0, min(start_y, grid_height - 1))
+        end_x = max(0, min(end_x, grid_width - 1))
+        end_y = max(0, min(end_y, grid_height - 1))
+
+        if (0 <= start_x < grid_width and
+            0 <= start_y < grid_height and
+            0 <= end_x < grid_width and
+            0 <= end_y < grid_height):
+            start = grid.node(start_x, start_y)
+            end = grid.node(end_x, end_y)
+            finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
+            path, _ = finder.find_path(start, end, grid)
+            if path and len(path) > 1:  
+                self.path = path
+                self.path_arr_index = 0
+                print(f"Found path with {len(path)} nodes")
+            else:
+                print("No valid path found!")
+
+    def update(self, keys, tiles, player, enemies, collision_grid, bullets=None, health_bar=None): 
+        self.path_find_timer += 1
+        distance_to_player = ((player.x - self.x) ** 2 + (player.y - self.y) ** 2) ** 0.5
+
+
+        if hasattr(self, 'collision_slowdown_timer') and self.collision_slowdown_timer > 0:
+            self.collision_slowdown_timer -= 1
+            if self.collision_slowdown_timer <= 0:
+                self.speed = self.original_speed
+
+        if not hasattr(self, 'path') or self.path is None:
+            self.path = []
+            self.path_arr_index = 0
+
+        if self.path_find_timer % 30 == 0:  
+            self.update_pathfinding(player, collision_grid)
+
+        if self.hit_timer > 0:
+            self.hit_timer -= 1  
+            if self.hit_timer < 0:
+                self.hit_timer = 0 
+
+        if not self.path or self.path_arr_index >= len(self.path):
+            return
+
+        tile_x, tile_y = self.path[self.path_arr_index]
+
+        target_x = tile_x * tile_size + tile_size // 2
+        target_y = tile_y * tile_size + tile_size // 2
+
+        direction_x = target_x - (self.x + self.width // 2) 
+        direction_y = target_y - (self.y + self.height // 2)
+
+        if (direction_x) ** 2 + (direction_y) ** 2 < 25:  
+            self.path_arr_index += 1
+            if self.path_arr_index >= len(self.path):
+                self.path_arr_index = len(self.path) - 1 
+                return
+
+        self.is_moving = False
+
+        if distance_to_player < self.detection_range and (direction_x ** 2 + direction_y ** 2) ** 0.5 > 0:
+            self.is_moving = True
+
+            distance = (direction_x ** 2 + direction_y ** 2) ** 0.5
+            direction_x /= distance
+            direction_y /= distance
+
+            dx = direction_x * self.speed 
+            dy = direction_y * self.speed 
+
+            if direction_x > 0:
+                self.facing_dir = 1  
+            else:
+                self.facing_dir = 0
+
+            self.move_and_collide(dx, dy, tiles, enemies, bullets, player, health_bar)
+
+    def move_and_collide(self, dx, dy, tiles, enemies=None, bullets=None, player=None, health_bar=None):
+        self.x += dx
+        enemy_rect = self.get_rect(self.x, self.y)
+        
+        for wall in tiles:
+            if enemy_rect.colliderect(wall):
+                if dx > 0: 
+                    self.x = wall.left - self.collision_width - self.collision_offset_x
+                elif dx < 0: 
+                    self.x = wall.right - self.collision_offset_x
+                break
+                
+        self.y += dy
+        enemy_rect = self.get_rect(self.x, self.y)
+        
+        for wall in tiles:
+            if enemy_rect.colliderect(wall):
+                if dy > 0:  
+                    self.y = wall.top - self.collision_height - self.collision_offset_y
+                elif dy < 0:  
+                    self.y = wall.bottom - self.collision_offset_y
+                break
+
+        if bullets:
+            for bullet in list(bullets):  
+                if enemy_rect.colliderect(bullet.get_rect()) and bullet.alive:  
+                    self.hit_timer = 10  
+                    self.lives -= bullet.damage
+                    bullet.alive = False  
+                    if self.lives <= 0 and enemies is not None:
+                        enemies.remove(self)
+                        break  
+
+        if enemies:
+            for other_enemy in enemies:
+                if other_enemy != self:  
+                    other_rect = other_enemy.get_rect(other_enemy.x, other_enemy.y)
+                    if enemy_rect.colliderect(other_rect):
+                        last_enemy = enemies[-1] if enemies else None
+
+                        if last_enemy:
+                            if not hasattr(last_enemy, 'original_speed'):
+                                last_enemy.original_speed = last_enemy.speed
+                            last_enemy.speed = last_enemy.original_speed * 0.3 
+                            last_enemy.collision_slowdown_timer = 120  
+
+                        break
+
+        if player:
+            player_rect = player.get_rect(player.x, player.y)
+            if player_rect.colliderect(enemy_rect):
+                self.collision_slowdown_timer = 180
+                if health_bar:
+                    health_bar.damage(1)
+
+    def get_rect(self, x, y):
+        return pygame.Rect(
+            x + self.collision_offset_x,
+            y + self.collision_offset_y,
+            self.collision_width,
+            self.collision_height
+        )
+
+    def update_animation(self, dt):
+        self.animation_timer += dt
+        
+        if self.animation_timer >= self.animation_speed:
+            self.animation_timer = 0
+            
+            if self.is_moving:
+                self.current_frame = (self.current_frame + 1) % max(1, len(self.walk_frames))
+            else:
+                self.current_frame = (self.current_frame + 1) % max(1, len(self.idle_frames))
+
+    def draw(self, surface, camera=None):
+        if self.is_moving:
+            current_img = self.walk_frames[self.current_frame % len(self.walk_frames)]
+            if self.facing_dir == 0:  
+                current_img = pygame.transform.flip(current_img, True, False)
+        else:
+            current_img = self.idle_frames[self.current_frame % len(self.idle_frames)]
+            if self.facing_dir == 0:
+                current_img = pygame.transform.flip(current_img, True, False)
+        if self.hit_timer > 0:
+            self.speed = 1.2
+        else:
+            self.speed = enemy_data[self.type]['speed']
+        if self.hit_timer > 6:
+            current_img = current_img.copy()
+            current_img.fill((255, 255, 255), special_flags=pygame.BLEND_ADD)
+            current_img.fill((255, 255, 255, 200), special_flags=pygame.BLEND_RGBA_MULT)
+        if camera:
+            draw_x = self.x * camera.zoom + camera.offset_x
+            draw_y = self.y * camera.zoom + camera.offset_y
+            scaled_img = pygame.transform.scale(
+                current_img, 
+                (int(self.width * camera.zoom), int(self.height * camera.zoom))
+            )
+            surface.blit(scaled_img, (draw_x, draw_y))
+        else:
+            surface.blit(current_img, (self.x, self.y))
 
 class TiledMap:
     def __init__(self, filename):
@@ -439,7 +724,6 @@ class Items:
         self.height = height
         self.width = width
 
-
 class Gun(Items):
     def __init__(self, x, y, type, height=122, width=70): 
         super().__init__(x, y, type, height, width)
@@ -509,7 +793,8 @@ class Gun(Items):
         for bullet in list(self.bullets):
             bullet.update(dt, collision_tiles)
             
-            if not bullet.alive:
+            # Remove bullets that are completely dead (no trail left)
+            if bullet.is_completely_dead():
                 self.bullets.remove(bullet)
                 continue
             
@@ -595,6 +880,10 @@ class Bullet:
         self.alive = True
         self.trail = []  
         self.trail_length = 5
+        self.death_position = None
+        self.trail_dying = False
+        self.trail_move_timer = 0
+        self.trail_move_speed = 50 
         
         self.current_frame = 0
         self.animation_timer = 0
@@ -608,20 +897,47 @@ class Bullet:
             self.animation.append(img)
         
     def update(self, dt=16, collision_tiles=None):  
-        # Calculate movement
-        dx = math.cos(self.angle) * self.speed
-        dy = math.sin(self.angle) * self.speed
-        
-        # Move and check for collisions
-        if collision_tiles:
-            self.move_and_collide(dx, dy, collision_tiles)
+        if self.alive:
+            dx = math.cos(self.angle) * self.speed
+            dy = math.sin(self.angle) * self.speed
+            
+            if collision_tiles:
+                self.move_and_collide(dx, dy, collision_tiles)
+            else:
+                self.x += dx
+                self.y += dy
+            
+            self.trail.append((self.x, self.y))
+            if len(self.trail) > self.trail_length:
+                self.trail.pop(0)
         else:
-            self.x += dx
-            self.y += dy
-        
-        self.trail.append((self.x, self.y))
-        if len(self.trail) > self.trail_length:
-            self.trail.pop(0)
+            if not self.trail_dying:
+                self.death_position = (self.x, self.y)
+                self.trail_dying = True
+            
+            self.trail_move_timer += dt
+            if self.trail_move_timer >= self.trail_move_speed and self.trail:
+                self.trail_move_timer = 0
+                
+                new_trail = []
+                for i, (trail_x, trail_y) in enumerate(self.trail):
+                    if i < len(self.trail) - 1:
+                        next_x, next_y = self.trail[i + 1]
+                    else:
+                        next_x, next_y = self.death_position
+                    
+                    dx = next_x - trail_x
+                    dy = next_y - trail_y
+                    distance = math.sqrt(dx * dx + dy * dy)
+                    
+                    if distance > self.speed / 2: 
+                        dx = (dx / distance) * self.speed
+                        dy = (dy / distance) * self.speed
+                        new_trail.append((trail_x + dx, trail_y + dy))
+                    elif distance > 1:  
+                        new_trail.append((next_x, next_y))
+                
+                self.trail = new_trail
             
         self.animation_timer += dt
         if self.animation_timer >= self.animation_speed:
@@ -629,6 +945,9 @@ class Bullet:
             self.animation_timer = 0
 
     def draw(self, surface, camera):
+        if not self.trail:
+            return
+            
         for i, (trail_x, trail_y) in enumerate(self.trail):
             alpha = int(255 * (i / len(self.trail)))
             
@@ -639,22 +958,23 @@ class Bullet:
             
             pygame.draw.circle(surface, (255, i * 50, 0), (int(screen_x), int(screen_y)), size)
         
-        screen_x = self.x * camera.zoom + camera.offset_x
-        screen_y = self.y * camera.zoom + camera.offset_y
-        
-        current_image = self.animation[self.current_frame]
-        
-        rotated_image = pygame.transform.rotate(current_image, -math.degrees(self.angle))
-        
-        if camera.zoom != 1.0:
-            scaled_width = int(rotated_image.get_width() * camera.zoom)
-            scaled_height = int(rotated_image.get_height() * camera.zoom)
-            rotated_image = pygame.transform.scale(rotated_image, (scaled_width, scaled_height))
-        
-        image_rect = rotated_image.get_rect()
-        image_rect.center = (int(screen_x), int(screen_y))
-        
-        surface.blit(rotated_image, image_rect)
+        if self.alive:
+            screen_x = self.x * camera.zoom + camera.offset_x
+            screen_y = self.y * camera.zoom + camera.offset_y
+            
+            current_image = self.animation[self.current_frame]
+            
+            rotated_image = pygame.transform.rotate(current_image, -math.degrees(self.angle))
+            
+            if camera.zoom != 1.0:
+                scaled_width = int(rotated_image.get_width() * camera.zoom)
+                scaled_height = int(rotated_image.get_height() * camera.zoom)
+                rotated_image = pygame.transform.scale(rotated_image, (scaled_width, scaled_height))
+            
+            image_rect = rotated_image.get_rect()
+            image_rect.center = (int(screen_x), int(screen_y))
+            
+            surface.blit(rotated_image, image_rect)
     
     def move_and_collide(self, dx, dy, tiles):
         new_x = self.x + dx
@@ -689,6 +1009,10 @@ class Bullet:
             self.radius * 2,
             self.radius * 2
         )
+
+    def is_completely_dead(self):
+        """Check if bullet and all trail points are dead"""
+        return not self.alive and len(self.trail) == 0
 
 class Chest:
     def __init__(self, x, y, task_type, height=32, width=32):
@@ -755,7 +1079,7 @@ class Player:
             img = pygame.transform.scale(img, (width, height))
             self.walk_frames.append(img)
 
-    def update(self, keys, tiles,endlevel_tiles, game):  
+    def update(self, keys, tiles,endlevel_tiles, game): 
         self.is_moving = False
         dx, dy = 0, 0
         
@@ -858,8 +1182,6 @@ class Player:
             surface.blit(scaled_img, (draw_x, draw_y))
         else:
             surface.blit(current_img, (self.x, self.y))
-
-
 
 if __name__ == "__main__":
     menu = BunkerMenu(2560, 1440)
