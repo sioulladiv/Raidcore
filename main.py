@@ -37,7 +37,11 @@ class Game:
         
         self.light = Lighting(200)
          
-        self.health_bar = healthBar(10, 10, 100, 20)
+        self.health_bar = healthBar(10, 10, 400, 80)
+        
+        # Add player damage cooldown
+        self.player_damage_cooldown = 0
+        self.player_damage_cooldown_duration = 60  # 1 second at 60 FPS
         
         self.menu = BunkerMenu(self.screen_width // 2 - 150, self.screen_height // 2 - 150)
         self.transition_timer = 0
@@ -71,7 +75,8 @@ class Game:
         pygame.display.set_caption("Dungeon Escape")
 
         FPS = 60
-        health_bar = healthBar(50, 50, 100, 100)
+        # Use the health_bar from the Game class instead of creating a new one
+        health_bar = self.health_bar
         health_bar.update(100)  
         light = Lighting(350)
         map_surface = self.game_map.make_map()
@@ -113,6 +118,11 @@ class Game:
 
         while running:
             dt = clock.tick(FPS)
+            
+            # Update player damage cooldown
+            if self.player_damage_cooldown > 0:
+                self.player_damage_cooldown -= 1
+            
             gun.update(camera, self.player, dt, collision_tiles) 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -131,9 +141,7 @@ class Game:
             health_bar.update_animation(dt) 
 
             keys = pygame.key.get_pressed()
-
-            if keys[pygame.K_t]:
-                health_bar.damage(2)  
+# Test with larger damage to see effect
 
             if not self.show_book:
                 self.player.update(keys, collision_tiles, endlevel_tiles, self)
@@ -144,6 +152,16 @@ class Game:
                 for chest in self.chests:
                     if chest.is_near_player(self.player):
                         self.show_press_e = True
+
+                # Check for player-enemy collisions
+                player_rect = self.player.get_rect(self.player.x, self.player.y)
+                for enemy in self.enemies:
+                    enemy_rect = enemy.get_rect(enemy.x, enemy.y)
+                    if player_rect.colliderect(enemy_rect) and self.player_damage_cooldown <= 0:
+                        health_bar.damage(20)  # Increase damage to make it more visible
+                        self.player_damage_cooldown = self.player_damage_cooldown_duration
+                        print(f"Enemy collision! Health: {health_bar.life}")
+                        break
 
                 for enemy in list(self.enemies): 
                     enemy.update(keys, collision_tiles, self.player, self.enemies, self.path_grid, gun.bullets, health_bar) 
@@ -327,6 +345,11 @@ class Game:
             walkable_tiles.append(row)
         return walkable_tiles
 
+    def lose_life(self):
+        if hasattr(self, 'health_bar'):
+            self.health_bar.damage(0.5)  # Increase damage amount
+            print(f"Player health: {self.health_bar.life}")
+
 class Enemy:
     def __init__(self, x, y, Ennemytype='chort'):
         data = enemy_data[Ennemytype]
@@ -369,6 +392,10 @@ class Enemy:
             img = pygame.transform.scale(img, (self.width, self.height))
             self.walk_frames.append(img)
 
+        # Add damage cooldown timer
+        self.damage_cooldown_timer = 0
+        self.damage_cooldown_duration = 60  # 1 second at 60 FPS
+
     def update_pathfinding(self, player, collision_grid):
         if not hasattr(self, 'path'):
             self.path = []
@@ -399,9 +426,7 @@ class Enemy:
             if path and len(path) > 1:  
                 self.path = path
                 self.path_arr_index = 0
-                print(f"Found path with {len(path)} nodes")
-            else:
-                print("No valid path found!")
+            
 
     def update(self, keys, tiles, player, enemies, collision_grid, bullets=None, health_bar=None): 
         self.path_find_timer += 1
@@ -508,13 +533,9 @@ class Enemy:
                             last_enemy.collision_slowdown_timer = 120  
 
                         break
+        
 
-        if player:
-            player_rect = player.get_rect(player.x, player.y)
-            if player_rect.colliderect(enemy_rect):
-                self.collision_slowdown_timer = 180
-                if health_bar:
-                    health_bar.damage(1)
+
 
     def get_rect(self, x, y):
         return pygame.Rect(
@@ -1141,6 +1162,13 @@ class Player:
                     self.y = wall.top - self.collision_height - self.collision_offset_y
                 elif dy < 0:  
                     self.y = wall.bottom - self.collision_offset_y
+                break
+
+        
+        for enemy in game.enemies:
+            if player_rect.colliderect(enemy.get_rect(enemy.x, enemy.y)):
+                game.lose_life()
+                print("Player hit by enemy!")
                 break
 
     def get_rect(self, x, y):
