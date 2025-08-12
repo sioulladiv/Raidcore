@@ -1,0 +1,334 @@
+import random
+import pygame
+from entities.particle import Particle
+
+
+class Enemy:
+    def __init__(self, x, y, Ennemytype='chort', data=None):
+        self.x = x
+        self.y = y
+        self.width = data["width"]
+        self.height = data["height"]
+        self.speed = data["speed"] * random.uniform(0.8, 1.2)
+        self.og_speed = self.speed
+        self.lives = data["lives"]
+        self.damage = data["damage"]
+        self.color = (255, 0, 0)
+        self.hit_timer = 0
+        self.type = Ennemytype
+        self.detection_range = data["detection_range"]
+        self.path_find_timer = 0
+        self.path_arr_index = 0
+        self.collision_slowdown_timer = 0
+        self.original_speed = self.speed
+        self.particle_num = 10
+        
+        self.velocity_x = 0.0
+        self.velocity_y = 0.0
+        self.max_velocity = self.speed
+        self.acceleration = 0.3
+        self.friction = 0.8
+        
+        self.smooth_x = float(x)
+        self.smooth_y = float(y)
+        
+        self.current_frame = 0
+        self.animation_timer = 0
+        self.animation_speed = data["animations"]["idle"]["frames"] * 20
+        self.is_moving = False
+        self.facing_dir = 0
+        self.collision_width = int(self.width * 0.7)
+        self.collision_height = int(self.height * 0.6)
+        self.collision_offset_x = (self.width - self.collision_width) // 2
+        self.collision_offset_y = self.height - self.collision_height - 2
+        self.colour = data["colour"]
+
+    
+        self.idle_frames = []
+        for i in range(data["animations"]["idle"]["frames"]):
+            img = pygame.image.load(f"{data['frame_path']}_idle_anim_f{i}.png")
+            img = pygame.transform.scale(img, (self.width, self.height))
+            self.idle_frames.append(img)
+
+        self.walk_frames = []
+        for i in range(data["animations"]["run"]["frames"]):
+            img = pygame.image.load(f"{data['frame_path']}_run_anim_f{i}.png")
+            img = pygame.transform.scale(img, (self.width, self.height))
+            self.walk_frames.append(img)
+
+        self.last_player_x = 0
+        self.last_player_y = 0
+        self.player_moved_threshold = 32  
+        self.direct_movement_distance = 30 
+
+    def get_rect(self, x, y):
+        return pygame.Rect(
+            x + self.collision_offset_x,
+            y + self.collision_offset_y,
+            self.collision_width,
+            self.collision_height
+        )
+
+    def update(self, keys, tiles, player, enemies, collision_grid, bullets=None, health_bar=None, particles=None): 
+        self.path_find_timer += 1
+        distance_to_player = ((player.x - self.x) ** 2 + (player.y - self.y) ** 2) ** 0.5
+
+        if hasattr(self, 'collision_slowdown_timer') and self.collision_slowdown_timer > 0:
+            self.collision_slowdown_timer -= 1
+            if self.collision_slowdown_timer <= 0:
+                self.speed = self.original_speed
+
+        if not hasattr(self, 'path') or self.path is None:
+            self.path = []
+            self.path_arr_index = 0
+
+        desired_velocity_x = 0.0
+        desired_velocity_y = 0.0
+        
+        if distance_to_player < self.detection_range:
+            player_moved_distance = ((player.x - self.last_player_x) ** 2 + (player.y - self.last_player_y) ** 2) ** 0.5
+            
+            should_update_path = (
+                self.path_find_timer % 20 == 0 or  
+                player_moved_distance > self.player_moved_threshold or  
+                not self.path or len(self.path) == 0  
+            )
+            
+            if should_update_path:
+                self.update_pathfinding(player, collision_grid)
+                self.last_player_x = player.x
+                self.last_player_y = player.y
+            
+            if distance_to_player < self.direct_movement_distance:
+                direction_x = (player.x + player.width // 2) - (self.x + self.width // 2)
+                direction_y = (player.y + player.height // 2) - (self.y + self.height // 2)
+                distance_to_target = (direction_x ** 2 + direction_y ** 2) ** 0.5
+                if distance_to_target > 0:
+                    desired_velocity_x = (direction_x / distance_to_target) * self.max_velocity
+                    desired_velocity_y = (direction_y / distance_to_target) * self.max_velocity
+            else:
+                if hasattr(self, 'path') and self.path and len(self.path) > 0:
+                    if self.path_arr_index >= len(self.path):
+                        self.path_arr_index = len(self.path) - 1
+                    
+                    if self.path_arr_index < len(self.path):
+                        tile_x, tile_y = self.path[self.path_arr_index]
+                        target_x = tile_x * tile_size + tile_size // 2
+                        target_y = tile_y * tile_size + tile_size // 2
+
+                        direction_x = target_x - (self.x + self.width // 2) 
+                        direction_y = target_y - (self.y + self.height // 2)
+
+                        if (direction_x) ** 2 + (direction_y) ** 2 < 18:  
+                            self.path_arr_index += 1
+                            if self.path_arr_index >= len(self.path):
+                                direction_x = (player.x + player.width // 2) - (self.x + self.width // 2)
+                                direction_y = (player.y + player.height // 2) - (self.y + self.height // 2)
+                            else:
+                                tile_x, tile_y = self.path[self.path_arr_index]
+                                target_x = tile_x * tile_size + tile_size // 2
+                                target_y = tile_y * tile_size + tile_size // 2
+                                direction_x = target_x - (self.x + self.width // 2) 
+                                direction_y = target_y - (self.y + self.height // 2)
+
+                        distance_to_target = (direction_x ** 2 + direction_y ** 2) ** 0.5
+                        if distance_to_target > 0:
+                            desired_velocity_x = (direction_x / distance_to_target) * self.max_velocity
+                            desired_velocity_y = (direction_y / distance_to_target) * self.max_velocity
+                else:
+                    direction_x = (player.x + player.width // 2) - (self.x + self.width // 2)
+                    direction_y = (player.y + player.height // 2) - (self.y + self.height // 2)
+                    distance_to_target = (direction_x ** 2 + direction_y ** 2) ** 0.5
+                    if distance_to_target > 0:
+                        desired_velocity_x = (direction_x / distance_to_target) * self.max_velocity * 0.7
+                        desired_velocity_y = (direction_y / distance_to_target) * self.max_velocity * 0.7
+
+        acceleration_factor = 0.7 if abs(desired_velocity_x) > 0 or abs(desired_velocity_y) > 0 else 0.5
+        
+        self.velocity_x += (desired_velocity_x - self.velocity_x) * acceleration_factor
+        self.velocity_y += (desired_velocity_y - self.velocity_y) * acceleration_factor
+        
+        if abs(desired_velocity_x) < 0.1:
+            self.velocity_x *= 0.85  
+        if abs(desired_velocity_y) < 0.1:
+            self.velocity_y *= 0.85
+
+        speed_threshold = 0.05
+        self.is_moving = abs(self.velocity_x) > speed_threshold or abs(self.velocity_y) > speed_threshold
+        
+        if abs(self.velocity_x) > speed_threshold:
+            if self.velocity_x > 0:
+                self.facing_dir = 1  
+            else:
+                self.facing_dir = 0
+
+        if self.is_moving or abs(self.velocity_x) > 0.01 or abs(self.velocity_y) > 0.01:
+            self.move_and_collide(self.velocity_x, self.velocity_y, tiles, enemies, bullets, player, health_bar, particles)
+
+    def update_pathfinding(self, player, collision_grid):
+        if not hasattr(self, 'path'):
+            self.path = []
+            self.path_arr_index = 0
+
+        try:
+            grid = Grid(matrix=collision_grid)
+            start_x = int((self.x + self.width // 2) // 16)
+            start_y = int((self.y + self.height // 2) // 16)
+            end_x = int((player.x + player.width // 2) // 16)
+            end_y = int((player.y + player.height // 2) // 16)
+
+            grid_width = len(collision_grid[0])
+            grid_height = len(collision_grid)
+            start_x = max(0, min(start_x, grid_width - 1))
+            start_y = max(0, min(start_y, grid_height - 1))
+            end_x = max(0, min(end_x, grid_width - 1))
+            end_y = max(0, min(end_y, grid_height - 1))
+
+            if (0 <= start_x < grid_width and
+                0 <= start_y < grid_height and
+                0 <= end_x < grid_width and
+                0 <= end_y < grid_height):
+                start = grid.node(start_x, start_y)
+                end = grid.node(end_x, end_y)
+                finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
+                path, _ = finder.find_path(start, end, grid)
+                if path and len(path) > 1:  
+                    if len(path) > 1 and (path[0][0] == start_x and path[0][1] == start_y):
+                        self.path = path[1:]
+                    else:
+                        self.path = path
+                    self.path_arr_index = 0
+        except Exception as e:
+            self.path = []
+            self.path_arr_index = 0
+
+    def update_animation(self, dt):
+        self.animation_timer += dt
+        
+        if self.animation_timer >= self.animation_speed:
+            self.animation_timer = 0
+            
+            if self.is_moving:
+                self.current_frame = (self.current_frame + 1) % max(1, len(self.walk_frames))
+            else:
+                self.current_frame = (self.current_frame + 1) % max(1, len(self.idle_frames))
+
+    def draw(self, surface, camera=None):
+        if self.is_moving:
+            current_img = self.walk_frames[self.current_frame % len(self.walk_frames)]
+            if self.facing_dir == 0:  
+                current_img = pygame.transform.flip(current_img, True, False)
+        else:
+            current_img = self.idle_frames[self.current_frame % len(self.idle_frames)]
+            if self.facing_dir == 0:
+                current_img = pygame.transform.flip(current_img, True, False)
+        if self.hit_timer > 0:
+            self.speed = 1.2
+        else:
+            self.speed = self.og_speed
+        if self.hit_timer > 6:
+            current_img = current_img.copy()
+            current_img.fill((255, 255, 255), special_flags=pygame.BLEND_ADD)
+            current_img.fill((255, 255, 255, 200), special_flags=pygame.BLEND_RGBA_MULT)
+        if camera:
+            draw_x = self.x * camera.zoom + camera.offset_x
+            draw_y = self.y * camera.zoom + camera.offset_y
+            scaled_img = pygame.transform.scale(
+                current_img, 
+                (int(self.width * camera.zoom), int(self.height * camera.zoom))
+            )
+            surface.blit(scaled_img, (draw_x, draw_y))
+        else:
+            surface.blit(current_img, (self.x, self.y))
+
+    def move_and_collide(self, dx, dy, tiles, enemies, bullets=None, player=None, health_bar=None, particles=None):
+        if bullets:
+            enemy_rect = self.get_rect(self.x, self.y)
+            for bullet in list(bullets):
+                bullet_rect = bullet.get_rect()
+                if enemy_rect.colliderect(bullet_rect) and bullet.alive:
+                    self.lives -= bullet.damage
+                    bullet.alive = False
+                    self.hit_timer = 10
+                    
+                    if self.lives <= 0:
+                        if self in enemies:
+                            enemies.remove(self)
+                            print(f"Enemy died at position ({self.x}, {self.y})")
+                            if particles is not None:
+                                for i in range(self.particle_num): 
+                                    particles.append(Particle(
+                                        self.x + self.width // 2, 
+                                        self.y + self.height // 2, 
+                                        random.uniform(-5, 5),  
+                                        random.uniform(-5, 5), 
+                                        self.colour,
+                                        random.randint(3, 5),  
+                                        random.randint(30, 60),
+                                    ))
+                                print(f"Total particles now: {len(particles)}")
+                            else:
+                                print("Particles list is None!")
+                        return
+
+        self.x += dx
+        enemy_rect = self.get_rect(self.x, self.y)
+        
+        for wall in tiles:
+            if enemy_rect.colliderect(wall):
+                if dx > 0:
+                    self.x = wall.left - self.collision_width - self.collision_offset_x
+                elif dx < 0:
+                    self.x = wall.right - self.collision_offset_x
+                break
+        
+        for other_enemy in enemies:
+            if other_enemy != self:
+                other_rect = other_enemy.get_rect(other_enemy.x, other_enemy.y)
+                if enemy_rect.colliderect(other_rect):
+                    if dx > 0:
+                        self.x = other_rect.left - self.collision_width - self.collision_offset_x
+                    elif dx < 0:
+                        self.x = other_rect.right - self.collision_offset_x
+                    
+                    self.collision_slowdown_timer = 30
+                    self.speed = self.original_speed * 0.3
+                    break
+
+        if enemy_rect.colliderect(player.get_rect(player.x,player.y)):
+            # Apply damage immediately without cooldown check
+            if health_bar:
+                health_bar.damage(self.damage)
+            
+            # Then apply knockback
+            self.x -= 2*dx
+            self.y -= 2*dy
+            self.velocity_x = 0
+            self.velocity_y = 0
+
+        self.y += dy
+        enemy_rect = self.get_rect(self.x, self.y)
+        
+        for wall in tiles:
+            if enemy_rect.colliderect(wall):
+                if dy > 0:
+                    self.y = wall.top - self.collision_height - self.collision_offset_y
+                elif dy < 0:
+                    self.y = wall.bottom - self.collision_offset_y
+                break
+        
+        for other_enemy in enemies:
+            if other_enemy != self:
+                other_rect = other_enemy.get_rect(other_enemy.x, other_enemy.y)
+                if enemy_rect.colliderect(other_rect):
+                    if dy > 0:
+                        self.y = other_rect.top - self.collision_height - self.collision_offset_y
+                    elif dy < 0:
+                        self.y = other_rect.bottom - self.collision_offset_y
+                    
+                    self.collision_slowdown_timer = 30
+                    self.speed = self.original_speed * 0.3
+                    break
+
+        if self.hit_timer > 0:
+            self.hit_timer -= 1

@@ -1,0 +1,37 @@
+{
+   "level1": [
+      {
+         "file": "Assets/music/WizardInTower.mp3",
+         "volume": 0.7,
+         "loop": true
+      }
+   ],
+   "level2": [
+      {
+         "file": "Assets/music/WizardInTower.mp3",
+         "volume": 0.8,
+         "loop": true
+      }
+   ],
+   "level3": [
+      {
+         "file": "Assets/music/WizardInTower.mp3",
+         "volume": 0.9,
+         "loop": true
+      }
+   ],
+   "menu": [
+      {
+         "file": "Assets/music/WizardInTower.mp3",
+         "volume": 0.6,
+         "loop": true
+      }
+   ],
+   "game_over": [
+      {
+         "file": "Assets/music/WizardInTower.mp3",
+         "volume": 0.5,
+         "loop": false
+      }
+   ]
+}
