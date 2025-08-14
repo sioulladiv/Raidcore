@@ -1,10 +1,15 @@
 import random
 import pygame
 from entities.particle import Particle
+from pathfinding.core.grid import Grid
+from pathfinding.finder.a_star import AStarFinder
+from pathfinding.core.diagonal_movement import DiagonalMovement
 
+tile_size = 16
 
 class Enemy:
     def __init__(self, x, y, Ennemytype='chort', data=None):
+        pygame.mixer.init()
         self.x = x
         self.y = y
         self.width = data["width"]
@@ -31,7 +36,9 @@ class Enemy:
         
         self.smooth_x = float(x)
         self.smooth_y = float(y)
-        
+
+        self.sound_timer = random.uniform(0,200)
+
         self.current_frame = 0
         self.animation_timer = 0
         self.animation_speed = data["animations"]["idle"]["frames"] * 20
@@ -61,6 +68,22 @@ class Enemy:
         self.player_moved_threshold = 32  
         self.direct_movement_distance = 30 
 
+        self.sounds = data["sound"]
+        for sound_name, sound_file in self.sounds.items():
+            if isinstance(sound_file, list):
+                sound_path = sound_file[0] if sound_file else None
+            else:
+                sound_path = sound_file
+            
+            if sound_path:
+                try:
+                    sound = pygame.mixer.Sound(sound_path)
+                    sound.set_volume(random.uniform(0.4, 0.7))
+                    self.sounds[sound_name] = sound
+                except pygame.error:
+                    print(f"Warning: Could not load sound file {sound_path}")
+                    self.sounds[sound_name] = None
+
     def get_rect(self, x, y):
         return pygame.Rect(
             x + self.collision_offset_x,
@@ -69,9 +92,14 @@ class Enemy:
             self.collision_height
         )
 
+    def get_distance_to_player(self, player):
+        return ((player.x - self.x) ** 2 + (player.y - self.y) ** 2) ** 0.5
+
     def update(self, keys, tiles, player, enemies, collision_grid, bullets=None, health_bar=None, particles=None): 
         self.path_find_timer += 1
-        distance_to_player = ((player.x - self.x) ** 2 + (player.y - self.y) ** 2) ** 0.5
+        distance_to_player = self.get_distance_to_player(player)
+
+        self.play_sound(player)
 
         if hasattr(self, 'collision_slowdown_timer') and self.collision_slowdown_timer > 0:
             self.collision_slowdown_timer -= 1
@@ -192,13 +220,11 @@ class Enemy:
                 end = grid.node(end_x, end_y)
                 finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
                 path, _ = finder.find_path(start, end, grid)
-                if path and len(path) > 1:  
-                    if len(path) > 1 and (path[0][0] == start_x and path[0][1] == start_y):
-                        self.path = path[1:]
-                    else:
-                        self.path = path
+                if path and len(path) > 1:
+                    self.path = [(node.x, node.y) for node in path[1:]]
                     self.path_arr_index = 0
         except Exception as e:
+            print("Error occurred while updating pathfinding:", e)
             self.path = []
             self.path_arr_index = 0
 
@@ -253,8 +279,8 @@ class Enemy:
                     
                     if self.lives <= 0:
                         if self in enemies:
+                            self.play_sound(player, "death")
                             enemies.remove(self)
-                            print(f"Enemy died at position ({self.x}, {self.y})")
                             if particles is not None:
                                 for i in range(self.particle_num): 
                                     particles.append(Particle(
@@ -266,9 +292,8 @@ class Enemy:
                                         random.randint(3, 5),  
                                         random.randint(30, 60),
                                     ))
-                                print(f"Total particles now: {len(particles)}")
-                            else:
-                                print("Particles list is None!")
+                    else:
+                        self.play_sound(player, "hurt")
                         return
 
         self.x += dx
@@ -296,11 +321,9 @@ class Enemy:
                     break
 
         if enemy_rect.colliderect(player.get_rect(player.x,player.y)):
-            # Apply damage immediately without cooldown check
             if health_bar:
                 health_bar.damage(self.damage)
             
-            # Then apply knockback
             self.x -= 2*dx
             self.y -= 2*dy
             self.velocity_x = 0
@@ -332,3 +355,23 @@ class Enemy:
 
         if self.hit_timer > 0:
             self.hit_timer -= 1
+
+    def play_sound(self, player, type = "attack"):
+        distance = self.get_distance_to_player(player)
+        if type == "attack":
+            if distance < 60:
+                type = "attack"  
+            if self.sound_timer < 0:
+                if type in self.sounds and self.sounds[type] is not None:
+                    sound = self.sounds[type]
+                    sound.set_volume(max(0, 1 - distance/300))
+                    self.sound_timer = random.uniform(10,60)
+                    sound.play()
+        else:
+            if type in self.sounds and self.sounds[type] is not None:
+                sound = self.sounds[type]
+                sound.set_volume(max(0, 1 - distance/300))
+                sound.play()
+        
+        self.sound_timer -= 1
+

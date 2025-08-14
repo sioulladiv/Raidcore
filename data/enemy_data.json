@@ -29,6 +29,11 @@
                 {"x": 590, "y": 274},
                 {"x": 590, "y": 463}
             ]
+        },
+        "sound": {
+            "attack": ["./Assets/Sounds/Chort/chort1.mp3", "./Assets/Sounds/Chort/chort2.mp3","./Assets/Sounds/Chort/chort3.mp3"],
+            "hurt": ["./Assets/Sounds/Chort/chort_hurt.mp3"],
+            "death": ["./Assets/Sounds/Chort/chort_death.mp3"]
         }
     }
 }

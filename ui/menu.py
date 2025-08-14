@@ -139,7 +139,7 @@ class BunkerMenu:
         subtitle_rect = subtitle_text.get_rect(center=(self.screen_width // 2, 280))
         self.screen.blit(subtitle_text, subtitle_rect)
 
-        nav_text = self.small_font.render("Use arrow keys or mouse to navigate", True, self.gray)
+        nav_text = self.small_font.render("Not for the light-hearted", True, self.gray)
         nav_rect = nav_text.get_rect(center=(self.screen_width // 2, 350))
         self.screen.blit(nav_text, nav_rect)
 

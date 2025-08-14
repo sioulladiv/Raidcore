@@ -6,6 +6,17 @@ class TiledMap:
         self.tmx_data = load_pygame(filename)
         self.width = self.tmx_data.width * self.tmx_data.tilewidth
         self.height = self.tmx_data.height * self.tmx_data.tileheight
+        self.lever_states = {
+            'lever1': False,
+            'lever2': False,
+            'lever3': False,
+            'lever4': False
+        }
+        self.current_level = 1  
+        self.all_levers_pulled = False  # Track if all levers are pulled
+        
+    def set_current_level(self, level):
+        self.current_level = level
         
     def render_layer(self, surface, layer):
         for x, y, gid in layer:
@@ -26,10 +37,26 @@ class TiledMap:
     def render_all_layers(self, surface):
         for layer in self.tmx_data.layers:
             if hasattr(layer, 'data'):
+                # Skip lever layers if we're on level 2 and the corresponding lever isn't pulled
+                if self.current_level == 2 and layer.name in ['lever1', 'lever2', 'lever3', 'lever4']:
+                    if not self.lever_states.get(layer.name, False):
+                        continue
+                # Only show spikes2 layer when all levers are pulled on level 2
+                elif self.current_level == 2 and layer.name == 'spikes2':
+                    if not self.all_levers_pulled:
+                        continue
                 self.render_layer(surface, layer)
             elif hasattr(layer, 'layers'):
                 for sublayer in layer.layers:
                     if hasattr(sublayer, 'data'):
+                        # Skip lever layers if we're on level 2 and the corresponding lever isn't pulled
+                        if self.current_level == 2 and sublayer.name in ['lever1', 'lever2', 'lever3', 'lever4']:
+                            if not self.lever_states.get(sublayer.name, False):
+                                continue
+                        # Only show spikes2 layer when all levers are pulled on level 2
+                        elif self.current_level == 2 and sublayer.name == 'spikes2':
+                            if not self.all_levers_pulled:
+                                continue
                         self.render_layer(surface, sublayer)
 
     def collision_layer(self, layer_name: list):
@@ -77,11 +104,60 @@ class TiledMap:
             print(f"Chest layer '{layer_name}' not found.")
         return self.chest_tiles
 
+    def lever_layer(self, layer_name: str):
+        self.lever_tiles = []
+        try:
+            layer = self.tmx_data.get_layer_by_name(layer_name)
+            for x, y, gid in layer:
+                tile_image = self.tmx_data.get_tile_image_by_gid(gid)
+                if tile_image:
+                    self.lever_tiles.append({
+                        'x': x * self.tmx_data.tilewidth,
+                        'y': y * self.tmx_data.tileheight,
+                        'type': 'lever'  
+                    })
+        except ValueError:
+            print(f"Lever layer '{layer_name}' not found.")
+        return self.lever_tiles
+
+    def update_lever_state(self, lever_name, is_pulled):
+        """Update the state of a specific lever (level 2 only)"""
+        if self.current_level == 2 and lever_name in self.lever_states:
+            self.lever_states[lever_name] = is_pulled
+            # Check if all levers are now pulled
+            self.all_levers_pulled = all(self.lever_states.values())
+            return True
+        return False
+
+    def set_all_levers_pulled(self, all_pulled):
+        """Manually set the all_levers_pulled state"""
+        self.all_levers_pulled = all_pulled
+
     def make_map(self):
         map_surface = pygame.Surface((self.width, self.height))
         map_surface.fill((0, 0, 0)) 
         self.render_all_layers(map_surface)
         return map_surface
+
+    def change_single_tile(self, layer_name, tile_x, tile_y, new_gid):
+        try:
+            layer = self.tmx_data.get_layer_by_name(layer_name)
+            if hasattr(layer, 'data'):
+                index = tile_y * self.tmx_data.width + tile_x
+                
+                if 0 <= index < len(layer.data):
+                    layer.data[index] = new_gid
+                    return True
+                else:
+                    print(f"Tile position ({tile_x}, {tile_y}) out of bounds")
+        except ValueError:
+            print(f"Layer '{layer_name}' not found.")
+        return False
+    
+    def change_tile_at_world_pos(self, layer_name, world_x, world_y, new_gid):
+        tile_x = world_x // self.tmx_data.tilewidth
+        tile_y = world_y // self.tmx_data.tileheight
+        return self.change_single_tile(layer_name, tile_x, tile_y, new_gid)
 
 class Tile:
     def __init__(self, x, y, image, width=16, height=16):

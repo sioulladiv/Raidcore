@@ -14,14 +14,13 @@ from weapons.bullet import Bullet
 from ui.health_bar import HealthBar
 from ui.game_over import GameOverScreen
 from ui.music import Music
+from ui.level_logic import level2
+from world.lever import Lever
 
 import json
 import os
 import random
 
-from pathfinding.core.grid import Grid
-from pathfinding.finder.a_star import AStarFinder
-from pathfinding.core.diagonal_movement import DiagonalMovement
 
 
 with open("data/enemy_data.json", "r") as f:
@@ -41,6 +40,8 @@ class Game:
         pygame.display.set_caption("Dungeon Game")
 
         self.game_map = TiledMap("Tiled/level{}.tmx".format(self.level))
+        self.game_map.set_current_level(self.level)
+        
         self.camera = Camera(screen_width, screen_height, zoom_level)
         
         self.player = Player(100, 100, 32, 32, (0, 255, 0))
@@ -50,6 +51,7 @@ class Game:
         self.light = Lighting(200)
 
         self.health_bar = HealthBar(10, 10, 400, 80)
+        self.level2 = level2()
 
         self.player_damage_cooldown = 0
         self.player_damage_cooldown_duration = 60 
@@ -57,12 +59,33 @@ class Game:
         self.menu = BunkerMenu(self.screen_width // 2 - 150, self.screen_height // 2 - 150)
         self.transition_timer = 0
 
-        self.lightlevel = 200
+        self.lightlevel = 240
+
+        self.chest_sounds = {
+            "open": "Assets/Sounds/chest_open.mp3",
+            "close": "Assets/Sounds/chest_close.mp3"
+        }
+        self.player_sounds = {
+            "hurt" : "Assets/Sounds/Player/player_hurt.mp3",
+            "death" : "Assets/Sounds/Player/player_death.mp3"
+        }
+
+        self.lever_sound = pygame.mixer.Sound("Assets/Sounds/Pressure_plate.mp3")
+        self.spike_retract = pygame.mixer.Sound("Assets/Sounds/spikes_retract.mp3")
+
+
+        self.chest_sounds["open"] = pygame.mixer.Sound(self.chest_sounds["open"])
+        self.chest_sounds["close"] = pygame.mixer.Sound(self.chest_sounds["close"])
         
+        self.player_sounds["hurt"] = pygame.mixer.Sound(self.player_sounds["hurt"])
+        self.player_sounds["death"] = pygame.mixer.Sound(self.player_sounds["death"])
+
         self.fade_overlay_alpha = 0
         self.fade_overlay_duration = 1000  
         self.fade_overlay_timer = 0
         self.fade_overlay_active = False
+
+        self.levers = {1: False, 2: False, 3: False, 4: False}
 
         self.press_e_image = pygame.image.load("Assets/press_e.png")
         self.press_e_image = pygame.transform.scale(self.press_e_image, (240, 192))  
@@ -70,16 +93,43 @@ class Game:
         self.path_grid = self.make_path_grid()
         print(self.path_grid)  
 
-        self.book_image = pygame.image.load("Assets/book.png")
-        book_width = screen_width - 200  
-        book_height = screen_height - 200  
-        self.book_image = pygame.transform.scale(self.book_image, (book_width, book_height))
-        self.show_book = False
-        self.book_x = 100  
-        self.book_y = 100
+        # Load letter animation frames
+        self.letter_frames = []
+        letter_folder = "Assets/letter_animation"
+        if os.path.exists(letter_folder):
+            frame_files = sorted([f for f in os.listdir(letter_folder) if f.endswith(('.png', '.jpg', '.jpeg'))])
+            for frame_file in frame_files:
+                frame_path = os.path.join(letter_folder, frame_file)
+                frame_image = pygame.image.load(frame_path)
+                
+                # Calculate scaling to fill screen while maintaining 240:180 aspect ratio
+                original_ratio = 240 / 180  # 4:3 ratio
+                scale_x = screen_width / 240
+                scale_y = screen_height / 180
+                scale = min(scale_x, scale_y) * 0.8  # Use 80% of screen to leave some margin
+                
+                new_width = int(240 * scale)
+                new_height = int(180 * scale)
+                frame_image = pygame.transform.scale(frame_image, (new_width, new_height))
+                self.letter_frames.append(frame_image)
+        
+        self.show_letter = False
+        self.letter_frame_index = 0
+        self.letter_animation_timer = 0
+        self.letter_animation_speed = 100  # milliseconds per frame
+        self.letter_animation_complete = False
+        # Center the letter on screen
+        if self.letter_frames:
+            self.letter_x = (screen_width - self.letter_frames[0].get_width()) // 2
+            self.letter_y = (screen_height - self.letter_frames[0].get_height()) // 2
+        else:
+            self.letter_x = 100
+            self.letter_y = 100
 
         self.game_over_screen = GameOverScreen(screen_width, screen_height)
         self.game_over = False
+        self.death_sound_played = False
+        self.spikes_deactivated_sound_played = False  # Track if spike retract sound has been played
 
 
     def run(self):
@@ -122,13 +172,23 @@ class Game:
         for chest_info in chest_data:
             chest = Chest(chest_info['x'], chest_info['y'], chest_info['type'])
             self.chests.append(chest)
+
+        lever_data = self.game_map.lever_layer("levers")
+        self.lever_objects = []  
+        for i, lever_info in enumerate(lever_data):
+            lever_id = f"lever{i+1}" 
+            lever = Lever(lever_info['x'], lever_info['y'], lever_info['type'], lever_id=lever_id)
+            self.lever_objects.append(lever)
+
     
         while running:
             self.life = self.health_bar.life
-            if self.life <= 0:
+            if self.life <= 0 and not self.game_over:
                 self.game_over = True
+                if not self.death_sound_played:
+                    self.player_sounds["death"].play()
+                    self.death_sound_played = True
                 self.music.play_game_over_music()
-            print(self.life)
             dt = clock.tick(FPS)
             
             if self.player_damage_cooldown > 0:
@@ -149,28 +209,63 @@ class Game:
                         running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_e:
-                        if self.show_book:
-                            self.show_book = False
-                        elif self.show_press_e:
-                            for chest in self.chests:
-                                if chest.is_near_player(self.player):
-                                    self.show_book = True
-                                    break
-                            
+                        if self.level == 1:
+                            if self.show_letter:
+                                self.chest_sounds["close"].play()
+                                self.show_letter = False
+                                self.letter_animation_complete = False
+                                self.letter_frame_index = 0
+                                self.letter_animation_timer = 0
+                            elif self.show_press_e:
+                                for chest in self.chests:
+                                    if chest.is_near_player(self.player):
+                                        self.show_letter = True
+                                        self.chest_sounds["open"].play()
+                                        self.letter_frame_index = 0
+                                        self.letter_animation_timer = 0
+                                        self.letter_animation_complete = False
+                                        break
+                        elif self.level == 2:
+                            if self.level2.all_levers_pulled:
+                                break
+                            else:
+                                for i, lever in enumerate(self.lever_objects):
+                                    if lever.is_near_player(self.player) and not lever.is_pulled:
+                                        if lever.pull(): 
+                                            lever_number = i + 1
+                                            self.levers[lever_number] = True
+                                            lever_id = lever.lever_id or f"lever{lever_number}"
+                                            if self.level2.pull_lever(lever_id):
+                                                self.game_map.update_lever_state(lever_id, True)
+                                                self.lever_sound.play()  
+                                                print(f"Pulled {lever_id}")
+                                        break
+
             self.player.update_animation(dt)
             health_bar.update_animation(dt) 
 
             keys = pygame.key.get_pressed()
 
-            if not self.show_book and not self.game_over:
+            if not self.show_letter and not self.game_over:
                 self.player.update(keys, collision_tiles, endlevel_tiles, self, spike_tiles)
                 camera.update(self.player)
                 light.update(self.player, camera, self.lightlevel)
 
                 self.show_press_e = False
-                for chest in self.chests:
-                    if chest.is_near_player(self.player):
-                        self.show_press_e = True
+                
+                # Check for chest proximity on level 1
+                if self.level == 1:
+                    for chest in self.chests:
+                        if chest.is_near_player(self.player):
+                            self.show_press_e = True
+                            break
+                
+                # Check for lever proximity on level 2
+                elif self.level == 2:
+                    for lever in self.lever_objects:
+                        if lever.is_near_player(self.player) and not lever.is_pulled:
+                            self.show_press_e = True
+                            break
 
                 for enemy in list(self.enemies): 
                     enemy.update(keys, collision_tiles, self.player, self.enemies, self.path_grid, gun.bullets, health_bar, self.particles) 
@@ -186,6 +281,16 @@ class Game:
                     self.fade_overlay_alpha = int(255 * (1 - progress))
 
             screen.fill((0, 0, 0))
+
+            # Update letter animation
+            if self.show_letter and not self.letter_animation_complete and len(self.letter_frames) > 0:
+                self.letter_animation_timer += dt
+                if self.letter_animation_timer >= self.letter_animation_speed:
+                    self.letter_animation_timer = 0
+                    self.letter_frame_index += 1
+                    if self.letter_frame_index >= len(self.letter_frames):
+                        self.letter_frame_index = len(self.letter_frames) - 1
+                        self.letter_animation_complete = True
 
             for particle in list(self.particles):
                 particle.update(dt)
@@ -219,13 +324,14 @@ class Game:
 
             health_bar.draw(screen)
 
-            if self.show_press_e and not self.show_book:
+            if self.show_press_e and not self.show_letter:
                 prompt_x = 40  
                 prompt_y = screen_height - 300  
                 screen.blit(self.press_e_image, (prompt_x, prompt_y))
 
-            if self.show_book:
-                screen.blit(self.book_image, (self.book_x, self.book_y))
+            if self.show_letter and len(self.letter_frames) > 0:
+                current_frame = self.letter_frames[self.letter_frame_index]
+                screen.blit(current_frame, (self.letter_x, self.letter_y))
 
             if self.fade_overlay_active and self.fade_overlay_alpha > 0:
                 fade_surface = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
@@ -237,14 +343,32 @@ class Game:
 
             pygame.display.flip()
 
+            if self.level == 2:
+                previous_all_levers_pulled = self.level2.all_levers_pulled
+                self.level2.update()
+                self.game_map.set_all_levers_pulled(self.level2.all_levers_pulled)
+                
+                # Play spike retract sound when all levers are first pulled
+                if not previous_all_levers_pulled and self.level2.all_levers_pulled and not self.spikes_deactivated_sound_played:
+                    self.spike_retract.play()
+                    self.spikes_deactivated_sound_played = True
+
             if map_surface != self.game_map.make_map():
                 map_surface = self.game_map.make_map()
                 try:
                     collision_tiles = self.game_map.collision_layer(["wall lining", "wall lining2"])
-                    spike_tiles = self.game_map.collision_layer(["spikes"])
+                    # Load spikes for all levels, but handle level 2 spike logic separately
+                    if self.level == 2:
+                        # Always load spikes layer for collision, but check lever state for damage
+                        spike_tiles = self.game_map.collision_layer(["spikes"])
+                        if self.level2.all_levers_pulled:
+                            spike_tiles = []  # Disable spikes when all levers are pulled
                 except Exception as e:
                     collision_tiles = self.game_map.collision_layer(["wall lining"])
+                    spike_tiles = []
                 endlevel_tiles = self.game_map.endlevel_layer("endlevel")
+
+
 
         pygame.quit()
 
@@ -289,6 +413,7 @@ class Game:
 
         try:
             self.game_map = TiledMap(next_level_path)
+            self.game_map.set_current_level(self.level)
             self.path_grid = self.make_path_grid()
         except FileNotFoundError:
             print(f"No more levels. File not found: {next_level_path}")
@@ -315,6 +440,19 @@ class Game:
         self.fade_overlay_alpha = 255
         self.fade_overlay_timer = 0
 
+        # Reset lever states for new level
+        if self.level == 2:
+            self.level2 = level2()
+            self.levers = {1: False, 2: False, 3: False, 4: False}  # Reset dictionary
+            self.game_map.set_all_levers_pulled(False)  # Reset spikes2 visibility
+            self.spikes_deactivated_sound_played = False  # Reset spike sound flag
+            lever_data = self.game_map.lever_layer("levers")
+            self.lever_objects = []
+            for i, lever_info in enumerate(lever_data):
+                lever_id = f"lever{i+1}"
+                lever = Lever(lever_info['x'], lever_info['y'], lever_info['type'], lever_id=lever_id)
+                self.lever_objects.append(lever)
+
     def spawn_enemy(self, x, y, enemy_type):
         data = enemy_data[enemy_type]
         enemy = Enemy(x, y, enemy_type, data)
@@ -336,7 +474,7 @@ class Game:
         
     def make_path_grid(self):
         walkable_tiles = []
-        enemy_width_tiles = 1  
+        enemy_width_tiles = 2  
         enemy_height_tiles = 2  
 
         for y in range(self.game_map.tmx_data.height):
@@ -374,12 +512,13 @@ class Game:
     def player_damage(self, damage_amount):
         if self.player_damage_cooldown <= 0:
             self.health_bar.damage(damage_amount)
+            self.player_sounds["hurt"].play()
             self.player_damage_cooldown = self.player_damage_cooldown_duration
 
     def restart_game(self):
-        """Reset the game to initial state"""
         self.level = 1
         self.game_over = False
+        self.death_sound_played = False
         
         self.health_bar.life = 100
         self.health_bar.update(100)
@@ -387,7 +526,13 @@ class Game:
         self.music.play_level_music(1)
         
         self.game_map = TiledMap("Tiled/level1.tmx")
+        self.game_map.set_current_level(self.level)
         self.path_grid = self.make_path_grid()
+        
+        self.level2 = level2()
+        self.levers = {1: False, 2: False, 3: False, 4: False} 
+        self.game_map.set_all_levers_pulled(False) 
+        self.spikes_deactivated_sound_played = False 
         
         player_x = self.game_map.width // 2
         player_y = self.game_map.height // 2
@@ -409,7 +554,9 @@ class Game:
             self.chests.append(chest)
         self.camera.zoom = 10
         self.camera.update(self.player)
-        
+
+        self.health_bar.update(self.health_bar.life)
+
         chest_data = self.game_map.chests_layer("chests")
         self.chests = []
         for chest_info in chest_data:

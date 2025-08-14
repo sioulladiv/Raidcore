@@ -8,7 +8,7 @@
    ],
    "level2": [
       {
-         "file": "Assets/music/WizardInTower.mp3",
+         "file": "Assets/music/level2_music.mp3",
          "volume": 0.8,
          "loop": true
       }
@@ -29,7 +29,7 @@
    ],
    "game_over": [
       {
-         "file": "Assets/music/WizardInTower.mp3",
+         "file": "Assets/music/sad-meow-song.mp3",
          "volume": 0.5,
          "loop": false
       }

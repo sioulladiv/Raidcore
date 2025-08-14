@@ -2,6 +2,7 @@ from weapons.item import Items
 import pygame
 import math
 from weapons.bullet import Bullet
+import random
 pygame.mixer.init()
 
 
@@ -27,7 +28,7 @@ class Gun(Items):
 
         try:
             self.gunshot_sound = pygame.mixer.Sound("Assets/Sounds/gunshot.mp3")
-            self.gunshot_sound.set_volume(1)
+            self.gunshot_sound.set_volume(0.4)
         except pygame.error:
             print("Warning: Could not load gunshot sound file")
             self.gunshot_sound = None
@@ -131,8 +132,8 @@ class Gun(Items):
         if pygame.mouse.get_pressed()[0] and player and camera and self.can_shoot:
             self.shoot_timer = self.shoot_speed
 
-            # Play the gunshot sound
             if self.gunshot_sound:
+                self.gunshot_sound.set_volume(random.uniform(0.2, 0.5))
                 self.gunshot_sound.play()
             
             mouse_x, mouse_y = pygame.mouse.get_pos()

@@ -11,6 +11,8 @@ class Chest:
         self.proximity_distance = 32
         self.interaction_distance = 32
 
+    
+
     def get_rect(self):
         return pygame.Rect(self.x, self.y, self.width, self.height)
 
