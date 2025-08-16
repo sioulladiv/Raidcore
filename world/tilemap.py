@@ -165,5 +165,15 @@ class Tile:
         self.rect = pygame.Rect(x, y, width, height)
         
     def draw(self, surface, camera_offset_x, camera_offset_y):
-        draw_pos = (self.rect.x + camera_offset_x, self.rect.y + camera_offset_y)
-        surface.blit(self.image, draw_pos)
+        start_x = max(0, int(-camera_offset_x / tile_size) - 1)
+        start_y = max(0, int(-camera_offset_y / tile_size) - 1)
+        end_x = min(self.level_width, int((-camera_offset_x + self.screen_width) / tile_size) + 2)
+        end_y = min(self.level_height, int((-camera_offset_y + self.screen_height) / tile_size) + 2)
+
+        for x in range(start_x, end_x):
+            for y in range(start_y, end_y):
+                tile = self.get_tile(x, y)
+                if tile:
+                    draw_x = x * tile_size + camera_offset_x
+                    draw_y = y * tile_size + camera_offset_y
+                    surface.blit(tile, (draw_x, draw_y))

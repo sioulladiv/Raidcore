@@ -279,6 +279,9 @@ class Enemy:
                     
                     if self.lives <= 0:
                         if self in enemies:
+                            for sound_name, sound in self.sounds.items():
+                                if sound is not None and hasattr(sound, 'stop'):
+                                    sound.stop()
                             self.play_sound(player, "death")
                             enemies.remove(self)
                             if particles is not None:
@@ -364,13 +367,13 @@ class Enemy:
             if self.sound_timer < 0:
                 if type in self.sounds and self.sounds[type] is not None:
                     sound = self.sounds[type]
-                    sound.set_volume(max(0, 1 - distance/300))
+                    sound.set_volume(max(0, 1 - distance/50))
                     self.sound_timer = random.uniform(10,60)
                     sound.play()
         else:
             if type in self.sounds and self.sounds[type] is not None:
                 sound = self.sounds[type]
-                sound.set_volume(max(0, 1 - distance/300))
+                sound.set_volume(max(0, 1 - distance/200))
                 sound.play()
         
         self.sound_timer -= 1

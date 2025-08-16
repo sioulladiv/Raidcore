@@ -26,6 +26,9 @@ import random
 with open("data/enemy_data.json", "r") as f:
     enemy_data = json.load(f)
 
+with open("data/level_data.json", "r") as f:
+    level_data = json.load(f)
+
 tile_size = 16
 
 
@@ -59,7 +62,7 @@ class Game:
         self.menu = BunkerMenu(self.screen_width // 2 - 150, self.screen_height // 2 - 150)
         self.transition_timer = 0
 
-        self.lightlevel = 240
+        self.lightlevel = level_data["level1"]["lighting"]
 
         self.chest_sounds = {
             "open": "Assets/Sounds/chest_open.mp3",
@@ -93,20 +96,18 @@ class Game:
         self.path_grid = self.make_path_grid()
         print(self.path_grid)  
 
-        # Load letter animation frames
         self.letter_frames = []
         letter_folder = "Assets/letter_animation"
         if os.path.exists(letter_folder):
-            frame_files = sorted([f for f in os.listdir(letter_folder) if f.endswith(('.png', '.jpg', '.jpeg'))])
+            frame_files = sorted([f for f in os.listdir(letter_folder) if f.endswith('.png')])
             for frame_file in frame_files:
                 frame_path = os.path.join(letter_folder, frame_file)
                 frame_image = pygame.image.load(frame_path)
                 
-                # Calculate scaling to fill screen while maintaining 240:180 aspect ratio
-                original_ratio = 240 / 180  # 4:3 ratio
+                original_ratio = 240 / 180  
                 scale_x = screen_width / 240
                 scale_y = screen_height / 180
-                scale = min(scale_x, scale_y) * 0.8  # Use 80% of screen to leave some margin
+                scale = min(scale_x, scale_y) * 0.8  
                 
                 new_width = int(240 * scale)
                 new_height = int(180 * scale)
@@ -116,9 +117,8 @@ class Game:
         self.show_letter = False
         self.letter_frame_index = 0
         self.letter_animation_timer = 0
-        self.letter_animation_speed = 100  # milliseconds per frame
+        self.letter_animation_speed = 100  
         self.letter_animation_complete = False
-        # Center the letter on screen
         if self.letter_frames:
             self.letter_x = (screen_width - self.letter_frames[0].get_width()) // 2
             self.letter_y = (screen_height - self.letter_frames[0].get_height()) // 2
@@ -129,7 +129,7 @@ class Game:
         self.game_over_screen = GameOverScreen(screen_width, screen_height)
         self.game_over = False
         self.death_sound_played = False
-        self.spikes_deactivated_sound_played = False  # Track if spike retract sound has been played
+        self.spikes_deactivated_sound_played = False  
 
 
     def run(self):
@@ -182,6 +182,7 @@ class Game:
 
     
         while running:
+            print(f"x: {self.player.x}, y: {self.player.y}")
             self.life = self.health_bar.life
             if self.life <= 0 and not self.game_over:
                 self.game_over = True
@@ -253,14 +254,12 @@ class Game:
 
                 self.show_press_e = False
                 
-                # Check for chest proximity on level 1
                 if self.level == 1:
                     for chest in self.chests:
                         if chest.is_near_player(self.player):
                             self.show_press_e = True
                             break
                 
-                # Check for lever proximity on level 2
                 elif self.level == 2:
                     for lever in self.lever_objects:
                         if lever.is_near_player(self.player) and not lever.is_pulled:
@@ -282,7 +281,6 @@ class Game:
 
             screen.fill((0, 0, 0))
 
-            # Update letter animation
             if self.show_letter and not self.letter_animation_complete and len(self.letter_frames) > 0:
                 self.letter_animation_timer += dt
                 if self.letter_animation_timer >= self.letter_animation_speed:
@@ -348,7 +346,6 @@ class Game:
                 self.level2.update()
                 self.game_map.set_all_levers_pulled(self.level2.all_levers_pulled)
                 
-                # Play spike retract sound when all levers are first pulled
                 if not previous_all_levers_pulled and self.level2.all_levers_pulled and not self.spikes_deactivated_sound_played:
                     self.spike_retract.play()
                     self.spikes_deactivated_sound_played = True
@@ -357,12 +354,10 @@ class Game:
                 map_surface = self.game_map.make_map()
                 try:
                     collision_tiles = self.game_map.collision_layer(["wall lining", "wall lining2"])
-                    # Load spikes for all levels, but handle level 2 spike logic separately
                     if self.level == 2:
-                        # Always load spikes layer for collision, but check lever state for damage
                         spike_tiles = self.game_map.collision_layer(["spikes"])
                         if self.level2.all_levers_pulled:
-                            spike_tiles = []  # Disable spikes when all levers are pulled
+                            spike_tiles = []  
                 except Exception as e:
                     collision_tiles = self.game_map.collision_layer(["wall lining"])
                     spike_tiles = []
@@ -375,8 +370,8 @@ class Game:
     def next_level(self):
         self.enemies.clear()
         self.particles.clear()
-        self.player.x = 100
-        self.player.y = 100
+        self.player.x , self.player.y = level_data[f"level{self.level}"]["start_pos"]
+
         self.camera.offset_x = 0
         self.camera.offset_y = 0
         self.camera.zoom = 1.0
@@ -419,8 +414,7 @@ class Game:
             print(f"No more levels. File not found: {next_level_path}")
             return
 
-        self.player.x = self.game_map.width // 2 - self.player.width // 2
-        self.player.y = self.game_map.height // 2 - self.player.height // 2
+        self.player.x , self.player.y = level_data[f"level{self.level}"]["start_pos"]
 
         chest_data = self.game_map.chests_layer("chests")
         self.chests = []
@@ -440,18 +434,19 @@ class Game:
         self.fade_overlay_alpha = 255
         self.fade_overlay_timer = 0
 
-        # Reset lever states for new level
         if self.level == 2:
             self.level2 = level2()
-            self.levers = {1: False, 2: False, 3: False, 4: False}  # Reset dictionary
-            self.game_map.set_all_levers_pulled(False)  # Reset spikes2 visibility
-            self.spikes_deactivated_sound_played = False  # Reset spike sound flag
+            self.levers = {1: False, 2: False, 3: False, 4: False}  
+            self.game_map.set_all_levers_pulled(False)  
+            self.spikes_deactivated_sound_played = False  
             lever_data = self.game_map.lever_layer("levers")
             self.lever_objects = []
             for i, lever_info in enumerate(lever_data):
                 lever_id = f"lever{i+1}"
                 lever = Lever(lever_info['x'], lever_info['y'], lever_info['type'], lever_id=lever_id)
                 self.lever_objects.append(lever)
+
+        self.lightlevel = level_data[f"level{self.level}"]["lighting"]
 
     def spawn_enemy(self, x, y, enemy_type):
         data = enemy_data[enemy_type]
@@ -534,10 +529,8 @@ class Game:
         self.game_map.set_all_levers_pulled(False) 
         self.spikes_deactivated_sound_played = False 
         
-        player_x = self.game_map.width // 2
-        player_y = self.game_map.height // 2
-        self.player.x = player_x
-        self.player.y = player_y
+        self.player.x , self.player.y = level_data[f"level{self.level}"]["start_pos"]
+
         
         self.enemies.clear()
         self.particles.clear()

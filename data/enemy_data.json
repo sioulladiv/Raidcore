@@ -1,9 +1,9 @@
 {
     "chort": {
-        "lives": 2,
-        "speed": 4,
+        "lives": 3,
+        "speed": 3,
         "damage": 10,
-        "detection_range": 350,
+        "detection_range": 200,
         "attack_cooldown": 500,
         "colour": [206,69,63],
         "width": 16,
@@ -34,6 +34,57 @@
             "attack": ["./Assets/Sounds/Chort/chort1.mp3", "./Assets/Sounds/Chort/chort2.mp3","./Assets/Sounds/Chort/chort3.mp3"],
             "hurt": ["./Assets/Sounds/Chort/chort_hurt.mp3"],
             "death": ["./Assets/Sounds/Chort/chort_death.mp3"]
+        }
+    },
+
+    "goblin": {
+        "lives": 1,
+        "speed": 5,
+        "damage": 2,
+        "detection_range": 200,
+        "attack_cooldown": 500,
+        "colour": [60,116,76],
+        "width": 16,
+        "height": 16,
+        "animations": {
+            "idle": {
+                "frames": 4
+            },
+            "run": {
+                "frames": 4
+            }
+        },
+        "frame_path": "./Dungeon/frames/goblin",
+        "xp_reward": 10,
+        "spawn_locations": {
+            "level1": [
+            ],
+            "level2": [
+            ]
+        },
+        "sound": {
+            "attack": ["./Assets/Sounds/Goblin/goblin-idle (1).mp3" ,
+                        "./Assets/Sounds/Goblin/goblin-idle (2).mp3",
+                        "./Assets/Sounds/Goblin/goblin-idle (3).mp3",
+                        "./Assets/Sounds/Goblin/goblin-idle (4).mp3",
+                        "./Assets/Sounds/Goblin/goblin-idle (5).mp3",
+                        "./Assets/Sounds/Goblin/goblin-idle (6).mp3",
+                        "./Assets/Sounds/Goblin/goblin-idle (7).mp3",
+                        "./Assets/Sounds/Goblin/goblin-idle (8).mp3",
+                        "./Assets/Sounds/Goblin/goblin-idle (9).mp3"],
+
+            "hurt": ["./Assets/Sounds/Goblin/goblin-hurt (1).mp3" ,
+                      "./Assets/Sounds/Goblin/goblin-hurt (2).mp3",
+                      "./Assets/Sounds/Goblin/goblin-hurt (3).mp3",
+                      "./Assets/Sounds/Goblin/goblin-hurt (4).mp3",
+                      "./Assets/Sounds/Goblin/goblin-hurt (5).mp3",
+                      "./Assets/Sounds/Goblin/goblin-hurt (6).mp3"
+                    ],
+            "death": ["./Assets/Sounds/Goblin/goblin-death.mp3",
+                       "./Assets/Sounds/Goblin/goblin-death (2).mp3",
+                       "./Assets/Sounds/Goblin/goblin-death (3).mp3",
+                       "./Assets/Sounds/Goblin/goblin-death (4).mp3"
+        ]
         }
     }
 }

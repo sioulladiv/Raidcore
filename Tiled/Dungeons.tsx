@@ -15,4 +15,12 @@
    <frame tileid="417" duration="100"/>
   </animation>
  </tile>
+ <wangsets>
+  <wangset name="wall" type="mixed" tile="-1">
+   <wangcolor name="" color="#ff0000" tile="-1" probability="1"/>
+   <wangtile tileid="33" wangid="0,0,0,0,0,1,1,1"/>
+   <wangtile tileid="34" wangid="1,0,0,0,1,0,0,0"/>
+   <wangtile tileid="35" wangid="0,1,1,1,0,0,0,0"/>
+  </wangset>
+ </wangsets>
 </tileset>
