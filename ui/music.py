@@ -1,6 +1,7 @@
 import pygame
 import json
 import os
+from config.game_settings import game_settings
 
 class Music:
     def __init__(self):
@@ -26,7 +27,9 @@ class Music:
             self.music.stop()
         
         self.music.load(file_path)
-        self.music.set_volume(track_info.get("volume", 0.7))
+        base_volume = track_info.get("volume", 0.7)
+        final_volume = base_volume * game_settings.get_music_volume()
+        self.music.set_volume(final_volume)
         
         if track_info.get("loop", True):
             self.music.play(-1) 

@@ -1,5 +1,59 @@
 import pygame
 import sys
+import os
+from config.game_settings import game_settings
+
+class Slider:
+    def __init__(self, x, y, width, height, default_value=50):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.max_value = 100
+        self.value = default_value
+        self.handle_width = 20
+        self.handle_height = height + 10
+        self.dragging = False
+        
+        self.track_color = (100, 100, 100)
+        self.handle_color = (255, 255, 255)
+        self.handle_hover_color = (200, 200, 200)
+
+    def get_handle_x(self):
+        return self.x + (self.width - self.handle_width) * (self.value / self.max_value)
+
+    def update(self, surface):
+        mouse_pos = pygame.mouse.get_pos()
+        mouse_pressed = pygame.mouse.get_pressed()[0]
+        
+        handle_x = self.get_handle_x()
+        handle_rect = pygame.Rect(handle_x, self.y - 5, self.handle_width, self.handle_height)
+        
+        if handle_rect.collidepoint(mouse_pos) or self.dragging:
+            if mouse_pressed:
+                self.dragging = True
+                relative_x = mouse_pos[0] - self.x
+                self.value = (relative_x / self.width) * self.max_value
+                self.value = max(0, min(self.value, self.max_value))
+        
+        if not mouse_pressed:
+            self.dragging = False
+            
+        self.draw(surface)
+
+    def draw(self, surface):
+        track_rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        pygame.draw.rect(surface, self.track_color, track_rect)
+        
+        handle_x = self.get_handle_x()
+        handle_rect = pygame.Rect(handle_x, self.y - 5, self.handle_width, self.handle_height)
+        
+        mouse_pos = pygame.mouse.get_pos()
+        color = self.handle_hover_color if handle_rect.collidepoint(mouse_pos) else self.handle_color
+        
+        pygame.draw.rect(surface, color, handle_rect)
+        pygame.draw.rect(surface, (0, 0, 0), handle_rect, 2)  
+
 
 class BunkerMenu:
     def __init__(self, screen_width, screen_height):
@@ -9,7 +63,7 @@ class BunkerMenu:
         self.screen = pygame.display.set_mode((screen_width, screen_height))
         pygame.display.set_caption("Dungeon Escape - Main Menu")
 
-        self.menu_options = ["Start Game", "Controls", "Credits", "Exit"]
+        self.menu_options = ["Start Game", "Controls", "Settings", "Credits", "Exit"]
         self.selected_option = 0
 
         self.white = (255, 255, 255)
@@ -19,14 +73,45 @@ class BunkerMenu:
         self.red = (255, 0, 0)
         self.blue = (100, 150, 255)
 
-        self.title_font = pygame.font.Font(None, 96)
-        self.subtitle_font = pygame.font.Font(None, 48)
-        self.menu_font = pygame.font.Font(None, 42)
-        self.small_font = pygame.font.Font(None, 32)
+        self.full_path_font = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Assets", "Fonts", "minecraft_font.ttf")
+
+
+        self.title_font = pygame.font.Font(self.full_path_font, 96)
+        self.subtitle_font = pygame.font.Font(self.full_path_font, 48)
+        self.menu_font = pygame.font.Font(self.full_path_font, 42)
+        self.small_font = pygame.font.Font(self.full_path_font, 32)
 
         self.button_width = 350
         self.button_height = 70
         self.button_spacing = 20
+
+        self.sliders = []
+
+        self.masterVolume_slider = Slider(
+            x=screen_width // 2 - 150,
+            y=screen_height // 2 + 150,
+            width=300,
+            height=20,
+            default_value=game_settings.settings["master_volume"]
+        )
+        self.musicVolume_slider = Slider(
+            x=screen_width // 2 - 150,
+            y=screen_height // 2 + 270,
+            width=300,
+            height=20,
+            default_value=game_settings.settings["music_volume"]
+        )
+        self.SFXVolume_slider = Slider(
+            x=screen_width // 2 - 150,
+            y=screen_height // 2 + 390,
+            width=300,
+            height=20,
+            default_value=game_settings.settings["sfx_volume"]
+        )
+
+        self.sliders.append(self.masterVolume_slider)
+        self.sliders.append(self.musicVolume_slider)
+        self.sliders.append(self.SFXVolume_slider)
 
         center_x = screen_width // 2
         start_y = screen_height // 2 - 50
@@ -45,16 +130,25 @@ class BunkerMenu:
         
         self.show_controls = False
         self.show_credits = False
+        self.show_settings = False
 
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return "quit"
             elif event.type == pygame.KEYDOWN:
-                if self.show_controls or self.show_credits:
+                if self.show_controls or self.show_credits or self.show_settings:
                     if event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
+                        # Save settings when closing settings screen
+                        if self.show_settings:
+                            game_settings.update_from_sliders(
+                                self.masterVolume_slider,
+                                self.musicVolume_slider,
+                                self.SFXVolume_slider
+                            )
                         self.show_controls = False
                         self.show_credits = False
+                        self.show_settings = False
                 elif event.key == pygame.K_UP:
                     self.selected_option = (self.selected_option - 1) % len(self.menu_options)
                 elif event.key == pygame.K_DOWN:
@@ -64,22 +158,26 @@ class BunkerMenu:
                 elif event.key == pygame.K_ESCAPE:
                     return "quit"
             elif event.type == pygame.MOUSEMOTION:
-                if not (self.show_controls or self.show_credits):
+                if not (self.show_controls or self.show_credits or self.show_settings):
                     mouse_pos = pygame.mouse.get_pos()
                     for i, button in enumerate(self.buttons):
                         if button.collidepoint(mouse_pos):
                             self.selected_option = i
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1 and not (self.show_controls or self.show_credits):
+                if event.button == 1 and not (self.show_controls or self.show_credits or self.show_settings):
                     mouse_pos = pygame.mouse.get_pos()
                     for i, button in enumerate(self.buttons):
                         if button.collidepoint(mouse_pos):
                             self.selected_option = i
                             return self.handle_selection()
                 elif event.button == 1 and (self.show_controls or self.show_credits):
-                    # Close info screens with mouse click
                     self.show_controls = False
                     self.show_credits = False
+        
+        if self.show_settings:
+            for slider in self.sliders:
+                slider.update(self.screen)
+        
         return None
 
     def handle_selection(self):
@@ -91,6 +189,9 @@ class BunkerMenu:
             return None
         elif selected == "Credits":
             self.show_credits = True
+            return None
+        elif selected == "Settings":
+            self.show_settings = True
             return None
         elif selected == "Exit":
             return "quit"
@@ -135,22 +236,13 @@ class BunkerMenu:
         title_rect = title_text.get_rect(center=(self.screen_width // 2, 200))
         self.screen.blit(title_text, title_rect)
 
-        subtitle_text = self.subtitle_font.render("Survive the depths", True, self.white)
-        subtitle_rect = subtitle_text.get_rect(center=(self.screen_width // 2, 280))
-        self.screen.blit(subtitle_text, subtitle_rect)
-
-        nav_text = self.small_font.render("Not for the light-hearted", True, self.gray)
-        nav_rect = nav_text.get_rect(center=(self.screen_width // 2, 350))
-        self.screen.blit(nav_text, nav_rect)
-
         for i, (option, button_rect) in enumerate(zip(self.menu_options, self.buttons)):
-            button_color = self.white if i == self.selected_option else self.gray
-            button_bg_color = self.dark_gray if i == self.selected_option else self.black
+            text_color = self.white if i == self.selected_option else self.gray
             
-            pygame.draw.rect(self.screen, button_bg_color, button_rect)
-            pygame.draw.rect(self.screen, button_color, button_rect, 3)
-            
-            text_surface = self.menu_font.render(option, True, button_color)
+            if i == self.selected_option: arrow_text = ">"
+            else: arrow_text = ""
+
+            text_surface = self.menu_font.render(f"{arrow_text} {option}", True, text_color)
             text_rect = text_surface.get_rect(center=button_rect.center)
             self.screen.blit(text_surface, text_rect)
 
@@ -172,10 +264,47 @@ class BunkerMenu:
             credits_content = [
                 "DUNGEON ESCAPE",
                 "",
-                "Developed by: only the best"
+                "Developed by: ludovailis"
 
             ]
             self.draw_info_screen("CREDITS", credits_content)
+
+        elif self.show_settings:
+            self.draw_settings_screen()
+
+    def draw_settings_screen(self):
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
+        overlay.set_alpha(200)
+        overlay.fill(self.black)
+        self.screen.blit(overlay, (0, 0))
+        
+        box_width = 800
+        box_height = 600
+        box_x = (self.screen_width - box_width) // 2
+        box_y = (self.screen_height - box_height) // 2
+        
+        info_box = pygame.Rect(box_x, box_y, box_width, box_height)
+        pygame.draw.rect(self.screen, self.dark_gray, info_box)
+        pygame.draw.rect(self.screen, self.white, info_box, 3)
+        
+        title_text = self.subtitle_font.render("SETTINGS", True, self.blue)
+        title_rect = title_text.get_rect(center=(self.screen_width // 2, box_y + 60))
+        self.screen.blit(title_text, title_rect)
+        
+        labels = ["Master Volume", "Music Volume", "SFX Volume"]
+        start_y = box_y + 150
+        
+        for i, (label, slider) in enumerate(zip(labels, self.sliders)):
+            label_text = self.small_font.render(f"{label}: {int(slider.value)}%", True, self.white)
+            label_rect = label_text.get_rect(center=(self.screen_width // 2, start_y + i * 120))
+            self.screen.blit(label_text, label_rect)
+            
+            slider.y = start_y + i * 120 + 30
+            slider.draw(self.screen)
+        
+        close_text = self.small_font.render("Press ESC or ENTER to close", True, self.gray)
+        close_rect = close_text.get_rect(center=(self.screen_width // 2, box_y + box_height - 40))
+        self.screen.blit(close_text, close_rect)
 
     def run(self):
         while True:
@@ -191,8 +320,9 @@ class BunkerMenu:
         pygame.quit()
         return "quit"
 
+
 if __name__ == "__main__":
-    menu = BunkerMenu(1280, 720)
+    menu = BunkerMenu(2560, 1440)
     result = menu.run()
     print(f"Menu result: {result}")
     sys.exit()

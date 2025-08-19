@@ -4,6 +4,7 @@ from entities.particle import Particle
 from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
 from pathfinding.core.diagonal_movement import DiagonalMovement
+from config.game_settings import game_settings
 
 tile_size = 16
 
@@ -14,7 +15,7 @@ class Enemy:
         self.y = y
         self.width = data["width"]
         self.height = data["height"]
-        self.speed = data["speed"] * random.uniform(0.8, 1.2)
+        self.speed = data["speed"] * random.uniform(0.8, 1.2) * 0.5 
         self.og_speed = self.speed
         self.lives = data["lives"]
         self.damage = data["damage"]
@@ -69,20 +70,31 @@ class Enemy:
         self.direct_movement_distance = 30 
 
         self.sounds = data["sound"]
+        self.sound_objects = {}
+        
         for sound_name, sound_file in self.sounds.items():
             if isinstance(sound_file, list):
-                sound_path = sound_file[0] if sound_file else None
+                # Load all sounds in the list
+                sound_list = []
+                for sound_path in sound_file:
+                    if sound_path:
+                        try:
+                            sound = pygame.mixer.Sound(sound_path)
+                            sound.set_volume(random.uniform(0.4, 0.7))
+                            sound_list.append(sound)
+                        except pygame.error:
+                            print(f"Warning: Could not load sound file {sound_path}")
+                self.sound_objects[sound_name] = sound_list if sound_list else None
             else:
-                sound_path = sound_file
-            
-            if sound_path:
-                try:
-                    sound = pygame.mixer.Sound(sound_path)
-                    sound.set_volume(random.uniform(0.4, 0.7))
-                    self.sounds[sound_name] = sound
-                except pygame.error:
-                    print(f"Warning: Could not load sound file {sound_path}")
-                    self.sounds[sound_name] = None
+                # Single sound file
+                if sound_file:
+                    try:
+                        sound = pygame.mixer.Sound(sound_file)
+                        sound.set_volume(random.uniform(0.4, 0.7))
+                        self.sound_objects[sound_name] = [sound]
+                    except pygame.error:
+                        print(f"Warning: Could not load sound file {sound_file}")
+                        self.sound_objects[sound_name] = None
 
     def get_rect(self, x, y):
         return pygame.Rect(
@@ -98,8 +110,6 @@ class Enemy:
     def update(self, keys, tiles, player, enemies, collision_grid, bullets=None, health_bar=None, particles=None): 
         self.path_find_timer += 1
         distance_to_player = self.get_distance_to_player(player)
-
-        self.play_sound(player)
 
         if hasattr(self, 'collision_slowdown_timer') and self.collision_slowdown_timer > 0:
             self.collision_slowdown_timer -= 1
@@ -131,9 +141,12 @@ class Enemy:
                 direction_x = (player.x + player.width // 2) - (self.x + self.width // 2)
                 direction_y = (player.y + player.height // 2) - (self.y + self.height // 2)
                 distance_to_target = (direction_x ** 2 + direction_y ** 2) ** 0.5
-                if distance_to_target > 0:
-                    desired_velocity_x = (direction_x / distance_to_target) * self.max_velocity
-                    desired_velocity_y = (direction_y / distance_to_target) * self.max_velocity
+                
+                # Don't move if too close to player (attack range)
+                if distance_to_target > 20:  # Minimum attack distance
+                    if distance_to_target > 0:
+                        desired_velocity_x = (direction_x / distance_to_target) * self.max_velocity
+                        desired_velocity_y = (direction_y / distance_to_target) * self.max_velocity
             else:
                 if hasattr(self, 'path') and self.path and len(self.path) > 0:
                     if self.path_arr_index >= len(self.path):
@@ -189,6 +202,56 @@ class Enemy:
                 self.facing_dir = 1  
             else:
                 self.facing_dir = 0
+
+        # Play sounds based on movement state
+        if self.is_moving:
+            self.play_sound(player, "attack")
+        else:
+            self.play_sound(player, "idle")
+
+        if bullets:
+            enemy_rect = self.get_rect(self.x, self.y)
+            for bullet in list(bullets):
+                bullet_rect = bullet.get_rect()
+                if enemy_rect.colliderect(bullet_rect) and bullet.alive:
+                    self.lives -= bullet.damage
+                    bullet.alive = False
+                    self.hit_timer = 10
+                    
+                    if self.lives <= 0:
+                        if self in enemies:
+                            # Stop all currently playing sounds
+                            for sound_name, sound_list in self.sound_objects.items():
+                                if sound_list is not None:
+                                    for sound in sound_list:
+                                        if hasattr(sound, 'stop'):
+                                            sound.stop()
+                            self.play_sound(player, "death")
+                            enemies.remove(self)
+                            if particles is not None:
+                                for i in range(self.particle_num): 
+                                    particles.append(Particle(
+                                        self.x + self.width // 2, 
+                                        self.y + self.height // 2, 
+                                        random.uniform(-5, 5),  
+                                        random.uniform(-5, 5), 
+                                        self.colour,
+                                        random.randint(3, 5),  
+                                        random.randint(30, 60),
+                                    ))
+                    else:
+                        self.play_sound(player, "hurt")
+                        return
+
+        # Check enemy-player collision for damage (regardless of movement)
+        enemy_rect = self.get_rect(self.x, self.y)
+        if enemy_rect.colliderect(player.get_rect(player.x, player.y)):
+            if health_bar:
+                health_bar.damage(self.damage)
+
+        # Decrement hit timer (for white hit effect)
+        if self.hit_timer > 0:
+            self.hit_timer -= 1
 
         if self.is_moving or abs(self.velocity_x) > 0.01 or abs(self.velocity_y) > 0.01:
             self.move_and_collide(self.velocity_x, self.velocity_y, tiles, enemies, bullets, player, health_bar, particles)
@@ -268,37 +331,6 @@ class Enemy:
             surface.blit(current_img, (self.x, self.y))
 
     def move_and_collide(self, dx, dy, tiles, enemies, bullets=None, player=None, health_bar=None, particles=None):
-        if bullets:
-            enemy_rect = self.get_rect(self.x, self.y)
-            for bullet in list(bullets):
-                bullet_rect = bullet.get_rect()
-                if enemy_rect.colliderect(bullet_rect) and bullet.alive:
-                    self.lives -= bullet.damage
-                    bullet.alive = False
-                    self.hit_timer = 10
-                    
-                    if self.lives <= 0:
-                        if self in enemies:
-                            for sound_name, sound in self.sounds.items():
-                                if sound is not None and hasattr(sound, 'stop'):
-                                    sound.stop()
-                            self.play_sound(player, "death")
-                            enemies.remove(self)
-                            if particles is not None:
-                                for i in range(self.particle_num): 
-                                    particles.append(Particle(
-                                        self.x + self.width // 2, 
-                                        self.y + self.height // 2, 
-                                        random.uniform(-5, 5),  
-                                        random.uniform(-5, 5), 
-                                        self.colour,
-                                        random.randint(3, 5),  
-                                        random.randint(30, 60),
-                                    ))
-                    else:
-                        self.play_sound(player, "hurt")
-                        return
-
         self.x += dx
         enemy_rect = self.get_rect(self.x, self.y)
         
@@ -322,15 +354,6 @@ class Enemy:
                     self.collision_slowdown_timer = 30
                     self.speed = self.original_speed * 0.3
                     break
-
-        if enemy_rect.colliderect(player.get_rect(player.x,player.y)):
-            if health_bar:
-                health_bar.damage(self.damage)
-            
-            self.x -= 2*dx
-            self.y -= 2*dy
-            self.velocity_x = 0
-            self.velocity_y = 0
 
         self.y += dy
         enemy_rect = self.get_rect(self.x, self.y)
@@ -356,25 +379,46 @@ class Enemy:
                     self.speed = self.original_speed * 0.3
                     break
 
-        if self.hit_timer > 0:
-            self.hit_timer -= 1
-
-    def play_sound(self, player, type = "attack"):
+    def play_sound(self, player, type="attack"):
         distance = self.get_distance_to_player(player)
-        if type == "attack":
-            if distance < 60:
-                type = "attack"  
-            if self.sound_timer < 0:
-                if type in self.sounds and self.sounds[type] is not None:
-                    sound = self.sounds[type]
-                    sound.set_volume(max(0, 1 - distance/50))
-                    self.sound_timer = random.uniform(10,60)
-                    sound.play()
-        else:
-            if type in self.sounds and self.sounds[type] is not None:
-                sound = self.sounds[type]
-                sound.set_volume(max(0, 1 - distance/200))
-                sound.play()
         
-        self.sound_timer -= 1
-
+        if type == "attack":
+            # Only play attack sounds when close to player and timer allows
+            if distance < 60 and self.sound_timer <= 0:
+                if type in self.sound_objects and self.sound_objects[type] is not None:
+                    sound_list = self.sound_objects[type]
+                    if sound_list:
+                        sound = random.choice(sound_list)
+                        base_volume = max(0, 1 - distance/50)
+                        final_volume = base_volume * game_settings.get_sfx_volume()
+                        sound.set_volume(final_volume)
+                        sound.play()
+                    # Set longer timer to prevent rapid repeating (2-4 seconds)
+                    self.sound_timer = random.uniform(80, 160)
+        elif type == "idle":
+            # Play idle sounds when not moving and timer allows
+            if not self.is_moving and distance < 100 and self.sound_timer <= 0:
+                if type in self.sound_objects and self.sound_objects[type] is not None:
+                    sound_list = self.sound_objects[type]
+                    if sound_list:
+                        sound = random.choice(sound_list)
+                        base_volume = max(0, 1 - distance/100)
+                        final_volume = base_volume * game_settings.get_sfx_volume()
+                        sound.set_volume(final_volume)
+                        sound.play()
+                    # Set longer timer for idle sounds (4-8 seconds)
+                    self.sound_timer = random.uniform(160, 320)
+        else:
+            # Play other sounds (hurt/death) immediately
+            if type in self.sound_objects and self.sound_objects[type] is not None:
+                sound_list = self.sound_objects[type]
+                if sound_list:
+                    sound = random.choice(sound_list)
+                    base_volume = max(0, 1 - distance/200)
+                    final_volume = base_volume * game_settings.get_sfx_volume()
+                    sound.set_volume(final_volume)
+                    sound.play()
+        
+        # Decrement timer
+        if self.sound_timer > 0:
+            self.sound_timer -= 1

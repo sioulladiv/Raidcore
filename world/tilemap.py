@@ -18,23 +18,29 @@ class TiledMap:
     def set_current_level(self, level):
         self.current_level = level
         
-    def render_layer(self, surface, layer):
+    def render_layer(self, surface, layer, visible_bounds=None):
         for x, y, gid in layer:
+            # Skip tiles outside visible bounds if culling is enabled
+            if visible_bounds:
+                start_x, start_y, end_x, end_y = visible_bounds
+                if x < start_x or x >= end_x or y < start_y or y >= end_y:
+                    continue
+                    
             tile = self.tmx_data.get_tile_image_by_gid(gid)
             if tile:
                 position = (x * self.tmx_data.tilewidth, y * self.tmx_data.tileheight)
                 surface.blit(tile, position)
                 
-    def render_group_layers(self, surface, group_name):
+    def render_group_layers(self, surface, group_name, visible_bounds=None):
         try:
             group = self.tmx_data.get_layer_by_name(group_name)
             for layer in group:
                 if hasattr(layer, 'data'):
-                    self.render_layer(surface, layer)
+                    self.render_layer(surface, layer, visible_bounds)
         except ValueError:
             print(f"Group '{group_name}' not found.")
                 
-    def render_all_layers(self, surface):
+    def render_all_layers(self, surface, visible_bounds=None):
         for layer in self.tmx_data.layers:
             if hasattr(layer, 'data'):
                 # Skip lever layers if we're on level 2 and the corresponding lever isn't pulled
@@ -45,7 +51,7 @@ class TiledMap:
                 elif self.current_level == 2 and layer.name == 'spikes2':
                     if not self.all_levers_pulled:
                         continue
-                self.render_layer(surface, layer)
+                self.render_layer(surface, layer, visible_bounds)
             elif hasattr(layer, 'layers'):
                 for sublayer in layer.layers:
                     if hasattr(sublayer, 'data'):
@@ -57,7 +63,7 @@ class TiledMap:
                         elif self.current_level == 2 and sublayer.name == 'spikes2':
                             if not self.all_levers_pulled:
                                 continue
-                        self.render_layer(surface, sublayer)
+                        self.render_layer(surface, sublayer, visible_bounds)
 
     def collision_layer(self, layer_name: list):
         self.collision_tiles = []
@@ -124,7 +130,6 @@ class TiledMap:
         """Update the state of a specific lever (level 2 only)"""
         if self.current_level == 2 and lever_name in self.lever_states:
             self.lever_states[lever_name] = is_pulled
-            # Check if all levers are now pulled
             self.all_levers_pulled = all(self.lever_states.values())
             return True
         return False
@@ -133,11 +138,78 @@ class TiledMap:
         """Manually set the all_levers_pulled state"""
         self.all_levers_pulled = all_pulled
 
-    def make_map(self):
+    def make_map(self, visible_bounds=None):
         map_surface = pygame.Surface((self.width, self.height))
         map_surface.fill((0, 0, 0)) 
-        self.render_all_layers(map_surface)
+        self.render_all_layers(map_surface, visible_bounds)
         return map_surface
+    
+    def render_to_screen(self, screen, camera, visible_bounds):
+        """
+        Render only visible tiles directly to the screen with camera transformation.
+        This is more efficient than creating a full map surface.
+        """
+        total_tiles_rendered = 0
+        
+        for layer in self.tmx_data.layers:
+            if hasattr(layer, 'data'):
+                # Skip lever layers if we're on level 2 and the corresponding lever isn't pulled
+                if self.current_level == 2 and layer.name in ['lever1', 'lever2', 'lever3', 'lever4']:
+                    if not self.lever_states.get(layer.name, False):
+                        continue
+                # Only show spikes2 layer when all levers are pulled on level 2
+                elif self.current_level == 2 and layer.name == 'spikes2':
+                    if not self.all_levers_pulled:
+                        continue
+                total_tiles_rendered += self._render_layer_to_screen(screen, layer, camera, visible_bounds)
+            elif hasattr(layer, 'layers'):
+                for sublayer in layer.layers:
+                    if hasattr(sublayer, 'data'):
+                        # Skip lever layers if we're on level 2 and the corresponding lever isn't pulled
+                        if self.current_level == 2 and sublayer.name in ['lever1', 'lever2', 'lever3', 'lever4']:
+                            if not self.lever_states.get(sublayer.name, False):
+                                continue
+                        # Only show spikes2 layer when all levers are pulled on level 2
+                        elif self.current_level == 2 and sublayer.name == 'spikes2':
+                            if not self.all_levers_pulled:
+                                continue
+                        total_tiles_rendered += self._render_layer_to_screen(screen, sublayer, camera, visible_bounds)
+        
+        return total_tiles_rendered
+    
+    def _render_layer_to_screen(self, screen, layer, camera, visible_bounds):
+        """Helper method to render a single layer directly to screen."""
+        start_x, start_y, end_x, end_y = visible_bounds
+        
+        # Count rendered tiles for performance metrics (optional debug info)
+        tiles_rendered = 0
+        
+        for x, y, gid in layer:
+            # Skip tiles outside visible bounds
+            if x < start_x or x >= end_x or y < start_y or y >= end_y:
+                continue
+                
+            tile = self.tmx_data.get_tile_image_by_gid(gid)
+            if tile:
+                tiles_rendered += 1
+                
+                # Calculate world position
+                world_x = x * self.tmx_data.tilewidth
+                world_y = y * self.tmx_data.tileheight
+                
+                # Apply camera transformation
+                screen_x = world_x * camera.zoom + camera.offset_x
+                screen_y = world_y * camera.zoom + camera.offset_y
+                
+                # Scale tile if necessary
+                if camera.zoom != 1.0:
+                    scaled_width = int(self.tmx_data.tilewidth * camera.zoom)
+                    scaled_height = int(self.tmx_data.tileheight * camera.zoom)
+                    tile = pygame.transform.scale(tile, (scaled_width, scaled_height))
+                
+                screen.blit(tile, (screen_x, screen_y))
+                
+        return tiles_rendered
 
     def change_single_tile(self, layer_name, tile_x, tile_y, new_gid):
         try:

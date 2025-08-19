@@ -19,7 +19,10 @@ class Bullet:
         self.current_frame = 0
         self.animation_timer = 0
         self.animation_speed = 50  
-        
+
+        pygame.mixer.init()
+
+        self.bullet_impact_sound = pygame.mixer.Sound("Assets/Sounds/bullet_impact.mp3")
         self.trail.append((self.x, self.y))
         self.animation = []
         for i in range(20):
@@ -115,6 +118,8 @@ class Bullet:
         for wall in tiles:
             if bullet_rect.colliderect(wall):
                 collision = True
+                self.bullet_impact_sound.set_volume(0.3)
+                #self.bullet_impact_sound.play()
                 break
         
         if not collision:

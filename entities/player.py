@@ -1,5 +1,6 @@
 import pygame
 import os
+from config.game_settings import game_settings
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -7,7 +8,7 @@ class Player:
     def __init__(self, x, y, width, height, color):
         self.x = x
         self.y = y
-        self.speed = 3.5
+        self.speed = 1.5 
         self.color = (255, 0, 0)
         self.width = width
         self.height = height
@@ -17,12 +18,15 @@ class Player:
         self.animation_speed = 80 
         self.is_moving = False
         self.facing_dir = 0
+        self.walking_sound_playing = False
 
         self.collision_width = int(width * 0.7)
         self.collision_height = int(height * 0.6)
         self.collision_offset_x = (width - self.collision_width) // 2
         self.collision_offset_y = height - self.collision_height - 2
 
+        pygame.mixer.init()
+        self.walking_sound = pygame.mixer.Sound("Assets/Sounds/Player/footsteps.mp3")
         self.idle_frames = []
         for i in range(21):
             img_path = os.path.join(project_root, "Dungeon", "frames", f"agent_idle{'0' + str(i) if i < 10 else str(i)}.png")
@@ -39,9 +43,10 @@ class Player:
             self.walk_frames.append(img)
 
     def update(self, keys, tiles, endlevel_tiles, game, spike_tiles): 
+        print("Player position:", self.x, self.y)
         self.is_moving = False
         dx, dy = 0, 0
-        
+
         mouse_x, mouse_y = pygame.mouse.get_pos()
         player_center_x = self.x + (self.width / 2)
         player_center_y = self.y + (self.height / 2)
@@ -66,6 +71,15 @@ class Player:
         elif keys[pygame.K_DOWN] or keys[pygame.K_s]:
             dy = self.speed
             self.is_moving = True
+
+        if self.is_moving and not self.walking_sound_playing:
+            volume = 0.3 * game_settings.get_sfx_volume()
+            self.walking_sound.set_volume(volume)
+            self.walking_sound.play(-1)
+            self.walking_sound_playing = True
+        elif not self.is_moving and self.walking_sound_playing:
+            self.walking_sound.stop()
+            self.walking_sound_playing = False
 
         if dx != 0 and dy != 0:
             dx *= 0.7071

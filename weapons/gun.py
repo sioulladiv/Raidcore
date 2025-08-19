@@ -2,13 +2,15 @@ from weapons.item import Items
 import pygame
 import math
 from weapons.bullet import Bullet
+from utils.culling import FrustumCuller
 import random
+from config.game_settings import game_settings
 pygame.mixer.init()
 
 
 
-class Gun(Items):
-    def __init__(self, x, y, type, height=146, width=84): 
+class Gun(Items): 
+    def __init__(self, x, y, type, height=160, width=96): 
         super().__init__(x, y, type, height, width)
         self.type = type
         self.ammo = 0
@@ -37,7 +39,7 @@ class Gun(Items):
             self.ammo = 10
             self.max_ammo = 10
             self.shoot_speed = 0.5
-            self.bullet_speed = 10  
+            self.bullet_speed = 4  
             self.bullet_damage = 1
             self.bullet_radius = 1
             self.image = pygame.image.load("./Dungeon/frames/pistol.png")
@@ -133,7 +135,9 @@ class Gun(Items):
             self.shoot_timer = self.shoot_speed
 
             if self.gunshot_sound:
-                self.gunshot_sound.set_volume(random.uniform(0.2, 0.5))
+                base_volume = random.uniform(0.2, 0.5)
+                final_volume = base_volume * game_settings.get_sfx_volume()
+                self.gunshot_sound.set_volume(final_volume)
                 self.gunshot_sound.play()
             
             mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -160,4 +164,19 @@ class Gun(Items):
             self.bullets.append(bullet)
         
         for bullet in self.bullets:
-            bullet.draw(surface, camera)
+            # Only draw bullets that are visible on screen
+            if camera:
+                # Check if bullet is within screen bounds with some margin
+                screen_x = bullet.x * camera.zoom + camera.offset_x
+                screen_y = bullet.y * camera.zoom + camera.offset_y
+                
+                # Use a margin for smooth transitions
+                margin = 100
+                screen_width = pygame.display.get_surface().get_width()
+                screen_height = pygame.display.get_surface().get_height()
+                
+                if (screen_x >= -margin and screen_x <= screen_width + margin and
+                    screen_y >= -margin and screen_y <= screen_height + margin):
+                    bullet.draw(surface, camera)
+            else:
+                bullet.draw(surface, camera)

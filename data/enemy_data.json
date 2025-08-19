@@ -1,8 +1,8 @@
 {
     "chort": {
         "lives": 3,
-        "speed": 3,
-        "damage": 10,
+        "speed": 1.6,
+        "damage": 30,
         "detection_range": 200,
         "attack_cooldown": 500,
         "colour": [206,69,63],
@@ -86,5 +86,103 @@
                        "./Assets/Sounds/Goblin/goblin-death (4).mp3"
         ]
         }
+    },
+    "muddy": {
+        "lives": 10,
+        "speed": 0,
+        "damage": 80,
+        "detection_range": 0,
+        "attack_cooldown": 500,
+        "colour": [60,116,76],
+        "width": 16,
+        "height": 16,
+        "animations": {
+            "idle": {
+                "frames": 6
+            },
+            "run": {
+                "frames": 1
+            }
+        },
+        "frame_path": "./Dungeon/frames/muddy",
+        "xp_reward": 10,
+        "spawn_locations": {
+            "level1": [
+            ],
+            "level2": [
+            ],
+            "level3": [
+                {"x": 880.5, "y": 978.5},
+                {"x": 1136.5, "y": 1008.25},
+                {"x": 1151.5, "y": 1008.25}
+            ]
+        },
+            "sound": {
+                "attack": ["./Assets/Sounds/Chort/chort1.mp3"],
+                "hurt": ["./Assets/Sounds/Chort/chort1.mp3"],
+                "death": ["./Assets/Sounds/Chort/chort1.mp3"]
+            }
+        },
+
+        "big_demon": {
+            "lives": 14,
+            "speed": 6,
+            "damage": 30,
+            "detection_range": 0,
+            "attack_cooldown": 500,
+            "colour": [206,69,63],
+            "width": 32,
+            "height": 36,
+            "animations": {
+                "idle": {
+                    "frames": 4
+                },
+                "run": {
+                    "frames": 4
+                }
+            },
+            "frame_path": "./Dungeon/frames/big_demon",
+            "xp_reward": 100,
+            "spawn_locations": {
+                "level1": [
+                ],
+                "level2": [
+                ],
+                "level3": [
+                ]
+            },
+            "sound": {
+                "attack": [
+                    "./Assets/Sounds/Warden/Warden_attack (1).mp3",
+                    "./Assets/Sounds/Warden/Warden_attack (2).mp3",
+                    "./Assets/Sounds/Warden/Warden_attack (3).mp3",
+                    "./Assets/Sounds/Warden/Warden_attack (4).mp3"
+                ],
+                "hurt": [
+                    "./Assets/Sounds/Warden/Warden_hurt1.ogg",
+                    "./Assets/Sounds/Warden/Warden_hurt2.ogg",
+                    "./Assets/Sounds/Warden/Warden_hurt3.ogg",
+                    "./Assets/Sounds/Warden/Warden_hurt4.ogg"
+                ],
+                "death": [
+                    "./Assets/Sounds/Warden/Warden_death.ogg",
+                    "./Assets/Sounds/Warden/Warden_death (2).ogg"
+                ],
+                "idle": [
+                    "./Assets/Sounds/Warden/Warden_idle (1).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (2).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (3).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (4).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (5).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (6).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (7).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (8).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (9).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (10).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (11).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (12).mp3",
+                    "./Assets/Sounds/Warden/Warden_idle (13).ogg"
+                ]
+            }
+        }
     }
-}
