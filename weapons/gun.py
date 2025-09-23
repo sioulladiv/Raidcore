@@ -10,8 +10,11 @@ pygame.mixer.init()
 
 
 class Gun(Items): 
-    def __init__(self, x, y, type, height=160, width=96): 
+    def __init__(self, x, y, type, displaySize, height=160, width=96): 
         super().__init__(x, y, type, height, width)
+        self.width = width * displaySize
+        self.height = height * displaySize
+        self.displaySize = displaySize
         self.type = type
         self.ammo = 0
         self.max_ammo = 10
@@ -19,10 +22,10 @@ class Gun(Items):
         self.shoot_timer = 0
         self.bullet_speed = 10
         self.bullet_damage = 1
-        self.bullet_radius = 5
+        self.bullet_radius = 5 * self.displaySize
         self.angle = 0
-        self.y_offset = 5
-        self.orbit_distance = 5  
+        self.y_offset = 8 * self.displaySize
+        self.orbit_distance = 5 * self.displaySize
         self.angle_offset = 0
 
         self.bullets = []
@@ -39,11 +42,11 @@ class Gun(Items):
             self.ammo = 10
             self.max_ammo = 10
             self.shoot_speed = 0.5
-            self.bullet_speed = 4  
-            self.bullet_damage = 1
-            self.bullet_radius = 1
+            self.bullet_speed = 4 
+            self.bullet_damage = 1 
+            self.bullet_radius = 1 
             self.image = pygame.image.load("./Dungeon/frames/pistol.png")
-            self.image = pygame.transform.scale(self.image, (width, height))
+            self.image = pygame.transform.scale(self.image, (self.width, self.height))
     
     def update(self, camera=None, player=None, dt=0, collision_tiles=None):
         if not hasattr(self, 'pointing_left'):

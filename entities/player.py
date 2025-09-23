@@ -5,14 +5,16 @@ from config.game_settings import game_settings
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 class Player:
-    def __init__(self, x, y, width, height, color):
+    def __init__(self, x, y, width, height, color, displaySize):
         self.x = x
         self.y = y
         self.speed = 1.5 
         self.color = (255, 0, 0)
-        self.width = width
-        self.height = height
-        
+        self.displaySize = displaySize
+
+        self.width = width 
+        self.height = height 
+
         self.current_frame = 0
         self.animation_timer = 0
         self.animation_speed = 80 
@@ -43,7 +45,8 @@ class Player:
             self.walk_frames.append(img)
 
     def update(self, keys, tiles, endlevel_tiles, game, spike_tiles): 
-        print("Player position:", self.x, self.y)
+        if keys[pygame.K_p]:
+            print("Player position:", self.x, self.y)
         self.is_moving = False
         dx, dy = 0, 0
 

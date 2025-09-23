@@ -1,12 +1,29 @@
+
+import pygame
 from game import Game
 from ui.menu import BunkerMenu
 
 if __name__ == "__main__":
-    menu = BunkerMenu(2560, 1440)
+    pygame.init()
+    info = pygame.display.Info()
+    #screen_width = info.current_w
+    #screen_height = info.current_h
+
+    screen_width = 1200
+    screen_height = screen_width / (16 / 9)
+
+    base_width = 2560
+    base_height = 1440
+    displaySize = screen_width / base_width
+
+    menu = BunkerMenu(screen_width, screen_height, displaySize)
     menu_result = menu.run()
-    
+
     if menu_result == "start_game":
-        game = Game(2560, 1440, zoom_level=1.0)
+        # You can set zoom_level to 1.0 or scale it with displaySize if needed
+        game = Game(screen_width, screen_height, displaySize, zoom_level=1.0)
         game.run()
-    else: 
+    else:
         print("Exiting game")
+
+

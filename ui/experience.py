@@ -1,19 +1,19 @@
 import pygame
 
-class HealthBar:
+class ExperienceBar:
     def __init__(self, x, y, width, height, displaySize):
         self.displaySize = displaySize
         self.x = x
         self.y = y
         self.heart_width = 325 * self.displaySize
         self.heart_height = 100 * self.displaySize
-        self.life = 100
-        self.previous_life = 100
-        
+        self.experience = 100
+        self.previous_experience = 100
+
         # Load frames sprite_healthbar00 → sprite_healthbar10
         self.frames = []
         for i in range(11):  
-            img = pygame.image.load(f"./Dungeon/frames/sprite_healthbar{i:02}.png")
+            img = pygame.image.load(f"./Dungeon/frames/sprite_experience{i:02}.png")
             img = pygame.transform.scale(img, (self.heart_width, self.heart_height))
             self.frames.append(img)
 
@@ -22,17 +22,11 @@ class HealthBar:
         self.animation_speed = 100  
         self.animation_timer = 0
 
-    def update(self, life):
-        """Update health and clamp between 0–100"""
-        if life != self.life:
-            self.previous_life = self.life
-            self.life = max(0, min(100, life))
-            print(f"Health updated to: {self.life}")
-
-    def damage(self, damage_amount):
-        new_life = self.life - damage_amount
-        print(f"Taking {damage_amount} damage. Health: {self.life} -> {new_life}")
-        self.update(new_life)
+    def update(self, experience):
+        if experience != self.experience:
+            self.previous_experience = self.experience
+            self.experience = max(0, min(100, experience))
+            print(f"Experience updated to: {self.experience}")
 
     def update_animation(self, dt):
         """Advance animation timer"""
@@ -42,8 +36,8 @@ class HealthBar:
             self.frame_index = (self.frame_index + 1) % len(self.frames)
 
     def draw(self, screen):
-        """Pick correct frame based on life (0=full → 10=empty)"""
-        frame_index = int((100 - self.life) / 10)
-        frame_index = max(0, min(10, frame_index))  
+        """Pick correct frame based on experience (0=full → 10=empty)"""
+        frame_index = int((100 - self.experience) / 10)
+        frame_index = max(0, min(10, frame_index))
 
         screen.blit(self.frames[frame_index], (self.x, self.y))

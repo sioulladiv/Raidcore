@@ -2,9 +2,9 @@ from pytmx.util_pygame import load_pygame
 import pygame
 
 class TiledMap:
-    def __init__(self, filename):
+    def __init__(self, filename, ):
         self.tmx_data = load_pygame(filename)
-        self.width = self.tmx_data.width * self.tmx_data.tilewidth
+        self.width = self.tmx_data.width * self.tmx_data.tilewidth  
         self.height = self.tmx_data.height * self.tmx_data.tileheight
         self.lever_states = {
             'lever1': False,

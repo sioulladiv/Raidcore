@@ -23,6 +23,9 @@ class Enemy:
         self.hit_timer = 0
         self.type = Ennemytype
         self.detection_range = data["detection_range"]
+        
+        self.xp_reward = data.get("xp")
+        
         self.path_find_timer = 0
         self.path_arr_index = 0
         self.collision_slowdown_timer = 0
@@ -67,7 +70,7 @@ class Enemy:
         self.last_player_x = 0
         self.last_player_y = 0
         self.player_moved_threshold = 32  
-        self.direct_movement_distance = 30 
+        self.direct_movement_distance = 40 
 
         self.sounds = data["sound"]
         self.sound_objects = {}
@@ -97,6 +100,7 @@ class Enemy:
                         self.sound_objects[sound_name] = None
 
     def get_rect(self, x, y):
+        #return pygame rect of enemy
         return pygame.Rect(
             x + self.collision_offset_x,
             y + self.collision_offset_y,
@@ -107,7 +111,7 @@ class Enemy:
     def get_distance_to_player(self, player):
         return ((player.x - self.x) ** 2 + (player.y - self.y) ** 2) ** 0.5
 
-    def update(self, keys, tiles, player, enemies, collision_grid, bullets=None, health_bar=None, particles=None): 
+    def update(self, keys, tiles, player, enemies, collision_grid, bullets=None, health_bar=None, particles=None, game=None): 
         self.path_find_timer += 1
         distance_to_player = self.get_distance_to_player(player)
 
@@ -127,7 +131,7 @@ class Enemy:
             player_moved_distance = ((player.x - self.last_player_x) ** 2 + (player.y - self.last_player_y) ** 2) ** 0.5
             
             should_update_path = (
-                self.path_find_timer % 20 == 0 or  
+                self.path_find_timer % 5 == 0 or  
                 player_moved_distance > self.player_moved_threshold or  
                 not self.path or len(self.path) == 0  
             )
@@ -138,6 +142,7 @@ class Enemy:
                 self.last_player_y = player.y
             
             if distance_to_player < self.direct_movement_distance:
+                
                 direction_x = (player.x + player.width // 2) - (self.x + self.width // 2)
                 direction_y = (player.y + player.height // 2) - (self.y + self.height // 2)
                 distance_to_target = (direction_x ** 2 + direction_y ** 2) ** 0.5
@@ -227,14 +232,19 @@ class Enemy:
                                         if hasattr(sound, 'stop'):
                                             sound.stop()
                             self.play_sound(player, "death")
+                            
+                            # Collect XP before removing enemy
+                            if game is not None and hasattr(self, 'xp_reward'):
+                                game.collect_xp(self.xp_reward)
+                            
                             enemies.remove(self)
                             if particles is not None:
                                 for i in range(self.particle_num): 
                                     particles.append(Particle(
                                         self.x + self.width // 2, 
                                         self.y + self.height // 2, 
-                                        random.uniform(-5, 5),  
-                                        random.uniform(-5, 5), 
+                                        random.uniform(-1, 1),  
+                                        random.uniform(-1, 1), 
                                         self.colour,
                                         random.randint(3, 5),  
                                         random.randint(30, 60),

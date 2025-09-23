@@ -56,10 +56,11 @@ class Slider:
 
 
 class BunkerMenu:
-    def __init__(self, screen_width, screen_height):
+    def __init__(self, screen_width, screen_height, displaySize):
         pygame.init()
         self.screen_width = screen_width
         self.screen_height = screen_height
+        self.displaySize = displaySize
         self.screen = pygame.display.set_mode((screen_width, screen_height))
         pygame.display.set_caption("Dungeon Escape - Main Menu")
 
@@ -76,14 +77,14 @@ class BunkerMenu:
         self.full_path_font = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Assets", "Fonts", "minecraft_font.ttf")
 
 
-        self.title_font = pygame.font.Font(self.full_path_font, 96)
-        self.subtitle_font = pygame.font.Font(self.full_path_font, 48)
-        self.menu_font = pygame.font.Font(self.full_path_font, 42)
-        self.small_font = pygame.font.Font(self.full_path_font, 32)
+        self.title_font = pygame.font.Font(self.full_path_font, int(96 * self.displaySize))
+        self.subtitle_font = pygame.font.Font(self.full_path_font, int(48 * self.displaySize))
+        self.menu_font = pygame.font.Font(self.full_path_font, int(42 * self.displaySize))
+        self.small_font = pygame.font.Font(self.full_path_font, int(32 * self.displaySize))
 
-        self.button_width = 350
-        self.button_height = 70
-        self.button_spacing = 20
+        self.button_width = int(350 * self.displaySize)
+        self.button_height = int(70 * self.displaySize)
+        self.button_spacing = int(20 * self.displaySize)
 
         self.sliders = []
 
@@ -202,8 +203,8 @@ class BunkerMenu:
         overlay.fill(self.black)
         self.screen.blit(overlay, (0, 0))
         
-        box_width = 800
-        box_height = 600
+        box_width = 800*self.displaySize
+        box_height = 600*self.displaySize
         box_x = (self.screen_width - box_width) // 2
         box_y = (self.screen_height - box_height) // 2
         
@@ -212,17 +213,17 @@ class BunkerMenu:
         pygame.draw.rect(self.screen, self.white, info_box, 3)
         
         title_text = self.subtitle_font.render(title, True, self.blue)
-        title_rect = title_text.get_rect(center=(self.screen_width // 2, box_y + 60))
+        title_rect = title_text.get_rect(center=(self.screen_width // 2, box_y + 60*self.displaySize))
         self.screen.blit(title_text, title_rect)
-        
-        start_y = box_y + 120
+
+        start_y = box_y + 120*self.displaySize
         for i, line in enumerate(content_lines):
             text = self.small_font.render(line, True, self.white)
-            text_rect = text.get_rect(center=(self.screen_width // 2, start_y + i * 40))
+            text_rect = text.get_rect(center=(self.screen_width // 2, start_y + i * 40*self.displaySize))
             self.screen.blit(text, text_rect)
         
         close_text = self.small_font.render("Press ESC or ENTER to close", True, self.gray)
-        close_rect = close_text.get_rect(center=(self.screen_width // 2, box_y + box_height - 40))
+        close_rect = close_text.get_rect(center=(self.screen_width // 2, box_y + box_height - 40*self.displaySize))
         self.screen.blit(close_text, close_rect)
 
     def draw(self):
