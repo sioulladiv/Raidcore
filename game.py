@@ -80,10 +80,11 @@ class Game:
         self.music = Music()
         self.light = Lighting(200)
 
-        self.health_bar = HealthBar(10, self.screen_height - 160*self.displaySize, 400, 80, self.displaySize)
+        self.health_bar = HealthBar(int(20 * self.displaySize), int(30 * self.displaySize),
+                        int(300 * self.displaySize), int(60 * self.displaySize), self.displaySize)
 
-        self.experience_bar = ExperienceBar(10, self.screen_height - 320*self.displaySize, 400, 80, self.displaySize)
-
+        self.experience_bar = ExperienceBar(int(20 * self.displaySize), int(130 * self.displaySize),
+                        int(300 * self.displaySize), int(60 * self.displaySize), self.displaySize)
         self.player_damage_cooldown = 0
         self.player_damage_cooldown_duration = 60 
         self.xp = 0

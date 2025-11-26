@@ -5,6 +5,7 @@ from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
 from pathfinding.core.diagonal_movement import DiagonalMovement
 from config.game_settings import game_settings
+import os
 
 tile_size = 16
 
@@ -142,18 +143,27 @@ class Enemy:
                 self.last_player_y = player.y
             
             if distance_to_player < self.direct_movement_distance:
-                
+                print("direct movement")
+                direction_x = player.x  - self.x 
+                direction_y = player.y - self.y
+                distance_to_target = (direction_x ** 2 + direction_y ** 2) ** 0.5
                 direction_x = (player.x + player.width // 2) - (self.x + self.width // 2)
                 direction_y = (player.y + player.height // 2) - (self.y + self.height // 2)
                 distance_to_target = (direction_x ** 2 + direction_y ** 2) ** 0.5
-                
+                if distance_to_target > 0:
+                    desired_velocity_x = (direction_x / distance_to_target) * self.max_velocity * 0.7
+                    desired_velocity_y = (direction_y / distance_to_target) * self.max_velocity * 0.7
                 # Don't move if too close to player (attack range)
-                if distance_to_target > 20:  # Minimum attack distance
-                    if distance_to_target > 0:
-                        desired_velocity_x = (direction_x / distance_to_target) * self.max_velocity
-                        desired_velocity_y = (direction_y / distance_to_target) * self.max_velocity
+                os.system("cls")
+                print(distance_to_player)
+                print("direct movement")
+                
             else:
+                
                 if hasattr(self, 'path') and self.path and len(self.path) > 0:
+                    os.system("cls")
+                    print(distance_to_player)
+                    print("pathfinding")
                     if self.path_arr_index >= len(self.path):
                         self.path_arr_index = len(self.path) - 1
                     
@@ -403,10 +413,8 @@ class Enemy:
                         final_volume = base_volume * game_settings.get_sfx_volume()
                         sound.set_volume(final_volume)
                         sound.play()
-                    # Set longer timer to prevent rapid repeating (2-4 seconds)
                     self.sound_timer = random.uniform(80, 160)
         elif type == "idle":
-            # Play idle sounds when not moving and timer allows
             if not self.is_moving and distance < 100 and self.sound_timer <= 0:
                 if type in self.sound_objects and self.sound_objects[type] is not None:
                     sound_list = self.sound_objects[type]
@@ -416,10 +424,8 @@ class Enemy:
                         final_volume = base_volume * game_settings.get_sfx_volume()
                         sound.set_volume(final_volume)
                         sound.play()
-                    # Set longer timer for idle sounds (4-8 seconds)
                     self.sound_timer = random.uniform(160, 320)
         else:
-            # Play other sounds (hurt/death) immediately
             if type in self.sound_objects and self.sound_objects[type] is not None:
                 sound_list = self.sound_objects[type]
                 if sound_list:
@@ -429,6 +435,5 @@ class Enemy:
                     sound.set_volume(final_volume)
                     sound.play()
         
-        # Decrement timer
         if self.sound_timer > 0:
             self.sound_timer -= 1
