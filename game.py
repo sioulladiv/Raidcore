@@ -45,6 +45,8 @@ class Game:
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         self.level = 1
         self.pling_sounds = []
+
+        self.fps_text_font = pygame.font.SysFont("Verdana", 20)
         
         # Load all sound files from the Orbs folder, copies of original with small changes in pitch like in minecraft
         orbs_folder = "Assets/Sounds/Orbs"
@@ -55,7 +57,7 @@ class Game:
                         sound_path = os.path.join(orbs_folder, filename)
                         sound = pygame.mixer.Sound(sound_path)
                         self.pling_sounds.append(sound)
-                        print(f"Loaded orb sound: {filename}")
+                        #print(f"Loaded orb sound: {str(filename)}")
                     except pygame.error as e:
                         print(f"Failed to load {filename}: {e}")
         
@@ -437,7 +439,9 @@ class Game:
 
             if self.game_over:
                 self.game_over_screen.draw(screen,self.level)
-
+            os.system("cls" if os.name == "nt" else "clear")
+            print(self.FPS)
+            self.show_fps(clock)
             pygame.display.flip()
 
             if self.level == 2:
@@ -472,8 +476,15 @@ class Game:
                 endlevel_tiles = self.game_map.endlevel_layer("endlevel")
 
 
-
+        #os.system("cls" if os.name == "nt" else "clear")#
+            
         pygame.quit()
+
+
+    def show_fps(self, clock):
+        print(f"FPS: {clock.get_fps()}")
+        text = self.fps_text_font.render(str(round(clock.get_fps(),2)), True, (255,255,255))
+        self.screen.blit(text, (self.screen_width - 100, 50))
 
     def next_level(self):
         self.enemies.clear()
