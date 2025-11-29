@@ -100,6 +100,22 @@ class Enemy:
                         print(f"Warning: Could not load sound file {sound_file}")
                         self.sound_objects[sound_name] = None
 
+    def cleanup(self):
+        """Clean up resources when enemy is removed"""
+        # Stop any playing sounds
+        for sound_name, sound_list in self.sound_objects.items():
+            if isinstance(sound_list, list):
+                for sound in sound_list:
+                    if sound:
+                        sound.stop()
+            elif sound_list:
+                sound_list.stop()
+        
+        # Clear references
+        self.sound_objects.clear()
+        self.idle_frames.clear()
+        self.walk_frames.clear()
+    
     def get_rect(self, x, y):
         #return pygame rect of enemy
         return pygame.Rect(
@@ -132,17 +148,18 @@ class Enemy:
             player_moved_distance = ((player.x - self.last_player_x) ** 2 + (player.y - self.last_player_y) ** 2) ** 0.5
             
             should_update_path = (
-                self.path_find_timer % 5 == 0 or  
+                self.path_find_timer % 45 == 0 or  # Optimized from 30 to 45 for better performance
                 player_moved_distance > self.player_moved_threshold or  
                 not self.path or len(self.path) == 0  
             )
             
+            # Only pathfind if within detection range
             if should_update_path:
                 self.update_pathfinding(player, collision_grid)
                 self.last_player_x = player.x
                 self.last_player_y = player.y
             
-            if distance_to_player < self.direct_movement_distance:
+            if distance_to_player < self.direct_movement_distance and should_update_path:
                 print("direct movement")
                 direction_x = player.x  - self.x 
                 direction_y = player.y - self.y
@@ -154,16 +171,12 @@ class Enemy:
                     desired_velocity_x = (direction_x / distance_to_target) * self.max_velocity * 0.7
                     desired_velocity_y = (direction_y / distance_to_target) * self.max_velocity * 0.7
                 # Don't move if too close to player (attack range)
-                os.system("cls")
-                print(distance_to_player)
-                print("direct movement")
+                # Removed debug prints for performance
                 
             else:
                 
                 if hasattr(self, 'path') and self.path and len(self.path) > 0:
-                    os.system("cls")
-                    print(distance_to_player)
-                    print("pathfinding")
+                    # Removed debug prints for performance
                     if self.path_arr_index >= len(self.path):
                         self.path_arr_index = len(self.path) - 1
                     
@@ -317,10 +330,15 @@ class Enemy:
         if self.animation_timer >= self.animation_speed:
             self.animation_timer = 0
             
+            # Pre-cache frame counts for better performance
             if self.is_moving:
-                self.current_frame = (self.current_frame + 1) % max(1, len(self.walk_frames))
+                frame_count = len(self.walk_frames)
+                if frame_count > 0:
+                    self.current_frame = (self.current_frame + 1) % frame_count
             else:
-                self.current_frame = (self.current_frame + 1) % max(1, len(self.idle_frames))
+                frame_count = len(self.idle_frames)
+                if frame_count > 0:
+                    self.current_frame = (self.current_frame + 1) % frame_count
 
     def draw(self, surface, camera=None):
         if self.is_moving:

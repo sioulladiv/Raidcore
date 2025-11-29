@@ -85,26 +85,29 @@ class Gun(Items):
             mouse_x, mouse_y = pygame.mouse.get_pos()
             self.angle = math.atan2(mouse_y - self.y, mouse_x - self.x)
 
-        for bullet in list(self.bullets):
-            bullet.update(dt, collision_tiles)
+        # Optimize bullet update with list comprehension
+        if camera:
+            margin = 300
+            screen_width = pygame.display.get_surface().get_width()
+            screen_height = pygame.display.get_surface().get_height()
             
-            if bullet.is_completely_dead():
-                self.bullets.remove(bullet)
-                continue
+            min_x = (0 - camera.offset_x) / camera.zoom - margin
+            min_y = (0 - camera.offset_y) / camera.zoom - margin
+            max_x = (screen_width - camera.offset_x) / camera.zoom + margin
+            max_y = (screen_height - camera.offset_y) / camera.zoom + margin
             
-            if camera:
-                margin = 300  
-                screen_width = pygame.display.get_surface().get_width()
-                screen_height = pygame.display.get_surface().get_height()
-                
-                min_x = (0 - camera.offset_x) / camera.zoom - margin
-                min_y = (0 - camera.offset_y) / camera.zoom - margin
-                max_x = (screen_width - camera.offset_x) / camera.zoom + margin
-                max_y = (screen_height - camera.offset_y) / camera.zoom + margin
-                
-                if (bullet.x < min_x or bullet.x > max_x or 
-                    bullet.y < min_y or bullet.y > max_y):
-                    self.bullets.remove(bullet)
+            # Update and filter bullets in one pass
+            updated_bullets = []
+            for bullet in self.bullets:
+                bullet.update(dt, collision_tiles)
+                if not bullet.is_completely_dead():
+                    if (bullet.x >= min_x and bullet.x <= max_x and 
+                        bullet.y >= min_y and bullet.y <= max_y):
+                        updated_bullets.append(bullet)
+            self.bullets = updated_bullets
+        else:
+            # No camera, simpler update
+            self.bullets = [b for b in self.bullets if (b.update(dt, collision_tiles), not b.is_completely_dead())[1]]
 
     def draw(self, surface, camera=None, player=None, dt=0):
         if player: 

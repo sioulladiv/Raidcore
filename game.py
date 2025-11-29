@@ -34,17 +34,30 @@ tile_size = 16
 
 
 class Game:
-    FPS = 40
-
     def __init__(self, screen_width, screen_height, displaySize, zoom_level=1.0):
         pygame.init()
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.displaySize = displaySize
         self.zoom_level = zoom_level
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        
+        # Get FPS cap from settings
+        self.FPS = game_settings.get_fps_cap()
+        
+        # Create display with optional VSync
+        # VSync requires pygame 2.0+ and should be passed as vsync parameter
+        try:
+            if game_settings.get_vsync():
+                self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), vsync=1)
+            else:
+                self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        except TypeError:
+            # Fallback for older pygame versions that don't support vsync parameter
+            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+            
         self.level = 1
         self.pling_sounds = []
+        self.xp_sound_events = []  # Track active XP sound timer events
 
         self.fps_text_font = pygame.font.SysFont("Verdana", 20)
         
@@ -73,6 +86,7 @@ class Game:
 
         self.game_map = TiledMap("Tiled/level{}.tmx".format(self.level))
         self.game_map.set_current_level(self.level)
+        self.path_grid_cache = None  # Cache for pathfinding grid
 
         self.camera = Camera(self.screen_width, self.screen_height, zoom_level)
 
@@ -271,7 +285,10 @@ class Game:
                             pling_sound.set_volume(final_volume)
                             pling_sound.play()
                     
-                    pygame.time.set_timer(event.type, 0)  # Disable this timer
+                    # Disable this timer and remove from tracking
+                    pygame.time.set_timer(event.type, 0)
+                    if event.type in self.xp_sound_events:
+                        self.xp_sound_events.remove(event.type)
 
                 # Handle events for game over screen
                 elif self.game_over:
@@ -355,7 +372,11 @@ class Game:
                 # update enemies every frame
                 for enemy in list(self.enemies):
                     enemy.update(keys, collision_tiles, self.player, self.enemies, self.path_grid, gun.bullets, health_bar, self.particles, self)
-                    enemy.update_animation(dt)
+                    # Clean up dead enemies that were removed during update
+                    if enemy not in self.enemies:
+                        enemy.cleanup()
+                    else:
+                        enemy.update_animation(dt)
             # update fade overlay for just after level change.
             # Increase alpha value until it reaches 255
             if self.fade_overlay_active:
@@ -378,10 +399,8 @@ class Game:
                         self.letter_animation_complete = True
 
             # update every particle that was spawned when an enemy was killed
-            for particle in list(self.particles):
-                particle.update(dt)
-                if particle.is_dead():
-                    self.particles.remove(particle)
+            # Use list comprehension for better performance
+            self.particles = [p for p in self.particles if (p.update(dt), not p.is_dead())[1]]
             
             # Calculate visible tile bounds for culling
             tile_size = self.game_map.tmx_data.tilewidth 
@@ -439,8 +458,8 @@ class Game:
 
             if self.game_over:
                 self.game_over_screen.draw(screen,self.level)
-            os.system("cls" if os.name == "nt" else "clear")
-            print(self.FPS)
+            # Removed os.system call - major performance bottleneck
+            # print(self.FPS)  # Debug only
             self.show_fps(clock)
             pygame.display.flip()
 
@@ -482,7 +501,7 @@ class Game:
 
 
     def show_fps(self, clock):
-        print(f"FPS: {clock.get_fps()}")
+        # Removed print statement for better performance
         text = self.fps_text_font.render(str(round(clock.get_fps(),2)), True, (255,255,255))
         self.screen.blit(text, (self.screen_width - 100, 50))
 
@@ -541,7 +560,26 @@ class Game:
             chest = Chest(chest_info['x'], chest_info['y'], chest_info['type'])
             self.chests.append(chest)
 
+        # Clean up old enemies before clearing list
+        for enemy in self.enemies:
+            enemy.cleanup()
         self.enemies.clear()
+        
+        # Clean up particles
+        for particle in self.particles:
+            del particle
+        self.particles.clear()
+        
+        # Clean up bullets
+        if hasattr(self, 'bullets'):
+            for bullet in self.bullets:
+                del bullet
+            self.bullets.clear()
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        
         self.load_enemies_for_level(self.enemies)
 
         self.zoom_level = 8.0
@@ -571,7 +609,8 @@ class Game:
         self.lightlevel = level_data[f"level{self.level}"]["lighting"]
 
     def reload_collision_data(self):
-        """Reload collision data for the current level"""
+        """Reload collision data for the current level and invalidate path grid cache"""
+        self.path_grid_cache = None  # Invalidate cache
         try:
             collision_tiles = self.game_map.collision_layer(["wall lining", "wall lining 2"])
             spike_tiles = self.game_map.collision_layer(["spikes"])
@@ -610,6 +649,10 @@ class Game:
         #    enemies.append(Enemy(player_x + (50 * i), player_y + (50 * i), enemy_type))
         
     def make_path_grid(self):
+        # Return cached grid if available
+        if self.path_grid_cache is not None:
+            return self.path_grid_cache
+        
         walkable_tiles = []
         tile_size = 16
         
@@ -663,6 +706,8 @@ class Game:
                 row.append(1 if not blocked else 0)
             walkable_tiles.append(row)
         
+        # Cache the grid before returning
+        self.path_grid_cache = walkable_tiles
         return walkable_tiles
 
     def player_damage(self, damage_amount):
@@ -677,8 +722,13 @@ class Game:
         """Collect XP when an enemy is killed"""
         self.xp += xp_amount
         
+        # Clear any existing XP sound timers first to prevent accumulation
+        for event_id in self.xp_sound_events:
+            pygame.time.set_timer(event_id, 0)  # 0 disables the timer
+        self.xp_sound_events.clear()
+        
         # Play multiple pling sounds based on XP amount
-        num_sounds = max(1, xp_amount // 2)  # At least 1 sound, then 1 per 2 XP
+        num_sounds = max(1, min(xp_amount // 2, 5))  # At least 1, max 5 sounds
         
         for i in range(num_sounds):
             # Randomly select a pling sound from the array
@@ -696,7 +746,9 @@ class Game:
                 else:
                     # Store the sound in a way that the timer can access it
                     setattr(self, f'delayed_pling_{i}', pling_sound)
-                    pygame.time.set_timer(pygame.USEREVENT + 1 + i, i * 70)  # 70ms between each sound
+                    event_id = pygame.USEREVENT + 1 + i
+                    self.xp_sound_events.append(event_id)  # Track this event
+                    pygame.time.set_timer(event_id, i * 70, 1)  # 1 = fire only once
         self.experience_bar.update(self.xp)
     def restart_game(self):
         # Reset level and game state

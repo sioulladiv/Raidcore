@@ -8,7 +8,7 @@ class Player:
     def __init__(self, x, y, width, height, color, displaySize):
         self.x = x
         self.y = y
-        self.speed = 1.5 
+        self.speed = 1 
         self.color = (255, 0, 0)
         self.displaySize = displaySize
 
@@ -153,20 +153,35 @@ class Player:
         if self.animation_timer >= self.animation_speed:
             self.animation_timer = 0
             
+            # Cache frame counts for better performance
             if self.is_moving:
-                self.current_frame = (self.current_frame + 1) % max(1, len(self.walk_frames))
+                frame_count = len(self.walk_frames)
+                if frame_count > 0:
+                    self.current_frame = (self.current_frame + 1) % frame_count
             else:
-                self.current_frame = (self.current_frame + 1) % max(1, len(self.idle_frames))
+                frame_count = len(self.idle_frames)
+                if frame_count > 0:
+                    self.current_frame = (self.current_frame + 1) % frame_count
 
     def draw(self, surface, camera=None):
+        # Get current frame without redundant modulo
         if self.is_moving:
-            current_img = self.walk_frames[self.current_frame % len(self.walk_frames)]
-            if self.facing_dir == 0:  
-                current_img = pygame.transform.flip(current_img, True, False)
+            frames = self.walk_frames
         else:
-            current_img = self.idle_frames[self.current_frame % len(self.idle_frames)]
-            if self.facing_dir == 0:
-                current_img = pygame.transform.flip(current_img, True, False)
+            frames = self.idle_frames
+        
+        if len(frames) == 0:
+            return
+        
+        # Ensure current_frame is within bounds
+        if self.current_frame >= len(frames):
+            self.current_frame = 0
+            
+        current_img = frames[self.current_frame]
+        
+        # Apply horizontal flip if facing left
+        if self.facing_dir == 0:
+            current_img = pygame.transform.flip(current_img, True, False)
         
         if camera:
             draw_x = self.x * camera.zoom + camera.offset_x

@@ -7,7 +7,8 @@ class Settings:
         self.default_settings = {
             "master_volume": 50,
             "music_volume": 50,
-            "sfx_volume": 50
+            "sfx_volume": 50,
+            "fps_cap" : 60
         }
         self.settings = self.load_settings()
     
@@ -65,6 +66,24 @@ class Settings:
         self.set_master_volume(master_slider.value)
         self.set_music_volume(music_slider.value)
         self.set_sfx_volume(sfx_slider.value)
+        self.save_settings()
+    
+    def get_fps_cap(self):
+        """Get FPS cap (0 for uncapped, default 144)"""
+        return self.settings.get("fps_cap", 144)
+    
+    def set_fps_cap(self, fps):
+        """Set FPS cap (0 for uncapped)"""
+        self.settings["fps_cap"] = max(0, fps)
+        self.save_settings()
+    
+    def get_vsync(self):
+        """Get VSync setting (default False)"""
+        return self.settings.get("vsync", False)
+    
+    def set_vsync(self, enabled):
+        """Set VSync on/off"""
+        self.settings["vsync"] = enabled
         self.save_settings()
 
 # Global settings instance

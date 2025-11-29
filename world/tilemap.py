@@ -15,6 +15,10 @@ class TiledMap:
         self.current_level = 1  
         self.all_levers_pulled = False  # Track if all levers are pulled
         
+        # Cache for scaled tiles to avoid repeated transform.scale calls
+        self.scaled_tile_cache = {}
+        self.last_zoom = 1.0
+        
     def set_current_level(self, level):
         self.current_level = level
         
@@ -181,6 +185,11 @@ class TiledMap:
         """Helper method to render a single layer directly to screen."""
         start_x, start_y, end_x, end_y = visible_bounds
         
+        # Clear cache if zoom changed significantly
+        if abs(camera.zoom - self.last_zoom) > 0.01:
+            self.scaled_tile_cache.clear()
+            self.last_zoom = camera.zoom
+        
         # Count rendered tiles for performance metrics (optional debug info)
         tiles_rendered = 0
         
@@ -201,11 +210,16 @@ class TiledMap:
                 screen_x = world_x * camera.zoom + camera.offset_x
                 screen_y = world_y * camera.zoom + camera.offset_y
                 
-                # Scale tile if necessary
+                # Scale tile if necessary, using cache
                 if camera.zoom != 1.0:
                     scaled_width = int(self.tmx_data.tilewidth * camera.zoom)
                     scaled_height = int(self.tmx_data.tileheight * camera.zoom)
-                    tile = pygame.transform.scale(tile, (scaled_width, scaled_height))
+                    
+                    # Use cache to avoid repeated scaling of same tile
+                    cache_key = (gid, scaled_width, scaled_height)
+                    if cache_key not in self.scaled_tile_cache:
+                        self.scaled_tile_cache[cache_key] = pygame.transform.scale(tile, (scaled_width, scaled_height))
+                    tile = self.scaled_tile_cache[cache_key]
                 
                 screen.blit(tile, (screen_x, screen_y))
                 

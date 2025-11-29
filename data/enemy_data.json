@@ -1,8 +1,8 @@
 {
     "chort": {
         "lives": 3,
-        "speed": 2.5,
-        "damage": 10,
+        "speed": 1.5,
+        "damage": 1,
         "detection_range": 200,
         "attack_cooldown": 500,
         "colour": [206,69,63],
