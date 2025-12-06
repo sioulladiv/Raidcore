@@ -19,6 +19,7 @@ from ui.level_logic import level2
 from world.lever import Lever
 from utils.culling import FrustumCuller
 from config.game_settings import game_settings
+from weapons.knife import Knife
 
 import json
 import os
@@ -40,19 +41,15 @@ class Game:
         self.screen_height = screen_height
         self.displaySize = displaySize
         self.zoom_level = zoom_level
-        
-        # Get FPS cap from settings
         self.FPS = game_settings.get_fps_cap()
+        self.current_weapon = "knife"
         
-        # Create display with optional VSync
-        # VSync requires pygame 2.0+ and should be passed as vsync parameter
         try:
             if game_settings.get_vsync():
                 self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), vsync=1)
             else:
                 self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         except TypeError:
-            # Fallback for older pygame versions that don't support vsync parameter
             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
             
         self.level = 1
@@ -60,6 +57,7 @@ class Game:
         self.xp_sound_events = []  # Track active XP sound timer events
 
         self.fps_text_font = pygame.font.SysFont("Verdana", 20)
+        
         
         # Load all sound files from the Orbs folder, copies of original with small changes in pitch like in minecraft
         orbs_folder = "Assets/Sounds/Orbs"
@@ -96,11 +94,15 @@ class Game:
         self.music = Music()
         self.light = Lighting(200)
 
-        self.health_bar = HealthBar(int(20 * self.displaySize), int(30 * self.displaySize),
-                        int(300 * self.displaySize), int(60 * self.displaySize), self.displaySize)
+        self.health_bar = HealthBar(int(0.5 * screen_width) - 0.5 * int(300 * self.displaySize) , int(screen_height - 150 * self.displaySize),
+                        int(8 * self.displaySize), int(3 * self.displaySize), self.displaySize)
 
-        self.experience_bar = ExperienceBar(int(20 * self.displaySize), int(130 * self.displaySize),
-                        int(300 * self.displaySize), int(60 * self.displaySize), self.displaySize)
+        # Vertical experience bar at bottom right (width=30, height=150)
+        bar_width = int(30 * self.displaySize)
+        bar_height = int(150 * self.displaySize)
+        bar_x = self.screen_width - bar_width - int(20 * self.displaySize)  # 20px from right edge
+        bar_y = self.screen_height - bar_height - int(20 * self.displaySize)  # 20px from bottom
+        self.experience_bar = ExperienceBar(bar_x, bar_y, bar_width, bar_height, self.displaySize)
         self.player_damage_cooldown = 0
         self.player_damage_cooldown_duration = 60 
         self.xp = 0
@@ -187,15 +189,17 @@ class Game:
         
     def run(self):
         pygame.init()
-        screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
         pygame.display.set_caption("Dungeon Escape")
 
         # settings frustrum culler for oprimisation especially for level 3 where there are many ennemies and 1000+ tiles to render at once
         # basically it only render tiles that are visible within the camera's view instead of rendering the whole surface every frame
         culler = FrustumCuller(self.screen_width, self.screen_height)
     
-        health_bar = self.health_bar
-        experience_bar = self.experience_bar
+        self.current_health_bar = self.health_bar
+        self.current_experience_bar = self.experience_bar
+        health_bar = self.current_health_bar
+        experience_bar = self.current_experience_bar
         health_bar.update(100)  
         experience_bar.update(0)
         light = Lighting(350)
@@ -206,6 +210,7 @@ class Game:
         endlevel_tiles = self.game_map.endlevel_layer("endlevel")
 
         gun = Gun(0, 0, "pistol", self.displaySize)
+        knife = Knife(0, 0, "knife", self.displaySize)
         player_x = self.game_map.width // 2
         player_y = self.game_map.height // 2
         self.player = Player(player_x, player_y, 16, 28, (255, 0, 0), self.displaySize)
@@ -258,11 +263,57 @@ class Game:
 
             if not self.game_over:
                 self.music.update(self.level)
+            if self.current_weapon == "gun":
+                gun.update(camera, self.player, dt, collision_tiles)
+            elif self.current_weapon == "knife":
+                knife.update(camera, self.player, dt, collision_tiles)
             
-            gun.update(camera, self.player, dt, collision_tiles) 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.VIDEORESIZE:
+                    # Get new window dimensions
+                    self.screen_width = event.w
+                    self.screen_height = event.h
+
+                    # Recreate the display surface
+                    self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
+
+                    # Recalculate scale factor
+                    self.displaySize = self.screen_width / self.base_width
+                    
+                    # Update camera dimensions
+                    camera.width = self.screen_width
+                    camera.height = self.screen_height
+                    
+                    # Update culler dimensions
+                    culler = FrustumCuller(self.screen_width, self.screen_height)
+                    
+                    # Recreate UI elements with new scale
+                    self.current_health_bar = HealthBar(int(20 * self.displaySize), int(30 * self.displaySize),
+                                        int(300 * self.displaySize), int(60 * self.displaySize), self.displaySize)
+                    self.current_health_bar.update(self.life)
+                    health_bar = self.current_health_bar
+                    
+                    # Vertical experience bar at bottom right
+                    bar_width = int(30 * self.displaySize)
+                    bar_height = int(150 * self.displaySize)
+                    bar_x = self.screen_width - bar_width - int(20 * self.displaySize)
+                    bar_y = self.screen_height - bar_height - int(20 * self.displaySize)
+                    self.current_experience_bar = ExperienceBar(bar_x, bar_y, bar_width, bar_height, self.displaySize)
+                    self.current_experience_bar.update(self.experience)
+                    experience_bar = self.current_experience_bar
+                    
+                    # Update game over screen
+                    self.game_over_screen = GameOverScreen(self.screen_width, self.screen_height)
+                    
+                    # Update press E image
+                    self.press_e_image = pygame.image.load("Assets/press_e.png")
+                    self.press_e_image = pygame.transform.scale(self.press_e_image, 
+                                                                (int(240 * self.displaySize), int(192 * self.displaySize)))
+                    
+                    # Update gun display size
+                    gun.displaySize = self.displaySize
                 elif event.type >= pygame.USEREVENT + 1 and event.type <= pygame.USEREVENT + 10:
                     # Handle delayed XP pling sounds like in minecraft
                     sound_index = event.type - pygame.USEREVENT - 1
@@ -371,7 +422,13 @@ class Game:
 
                 # update enemies every frame
                 for enemy in list(self.enemies):
-                    enemy.update(keys, collision_tiles, self.player, self.enemies, self.path_grid, gun.bullets, health_bar, self.particles, self)
+                    # Pass appropriate weapon data based on current weapon
+                    if self.current_weapon == "gun":
+                        enemy.update(keys, collision_tiles, self.player, self.enemies, self.path_grid, gun.bullets, health_bar, self.particles, self)
+                    elif self.current_weapon == "knife":
+                        # For knife, pass attack info if currently attacking
+                        knife_attack = knife.get_attack_rect() if not knife.can_attack else None
+                        enemy.update(keys, collision_tiles, self.player, self.enemies, self.path_grid, [], health_bar, self.particles, self, knife_attack, knife.damage if not knife.can_attack else 0)
                     # Clean up dead enemies that were removed during update
                     if enemy not in self.enemies:
                         enemy.cleanup()
@@ -407,20 +464,20 @@ class Game:
             visible_bounds = culler.get_visible_tile_bounds(camera, tile_size)
             
             # Render map with culling directly to screen instead of using map_surface
-            screen.fill((0, 0, 0))  
-            tiles_rendered = self.game_map.render_to_screen(screen, camera, visible_bounds)
+            self.screen.fill((0, 0, 0))  
+            tiles_rendered = self.game_map.render_to_screen(self.screen, camera, visible_bounds)
 
             # Reset culling stats for this frame if debugging
             if culler.debug_enabled:
                 culler.culled_count = 0
                 culler.total_count = 0
 
-            self.player.draw(screen, camera)
+            self.player.draw(self.screen, camera)
 
             # Cull and draw enemies
             visible_enemies = culler.filter_visible_entities(self.enemies, camera, margin=100)
             for enemy in visible_enemies:
-                enemy.draw(screen, camera)
+                enemy.draw(self.screen, camera)
 
             # Cull and draw particles
             visible_particles = []
@@ -429,14 +486,17 @@ class Game:
                     visible_particles.append(particle)
             
             for particle in visible_particles:
-                particle.draw(screen, camera)
+                particle.draw(self.screen, camera)
 
-            light.draw(screen, camera)
-            gun.draw(screen, camera, self.player, dt)
+            light.draw(self.screen, camera)
+            if self.current_weapon == "gun":
+                gun.draw(self.screen, camera, self.player, dt)
+            elif self.current_weapon == "knife":
+                knife.draw(self.screen, camera, self.player, dt)
 
-            health_bar.draw(screen)
+            health_bar.draw(self.screen, self.player, camera)
             # Draw the experience bar
-            self.experience_bar.draw(screen)
+            self.experience_bar.draw(self.screen)
 
             # Draw XP display
             #xp_text = self.xp_font.render(f"XP: {self.xp}", True, (255, 255, 255))
@@ -445,22 +505,23 @@ class Game:
             if self.show_press_e and not self.show_letter:
                 prompt_x = self.screen_width - (1.5 * 240) * self.displaySize
                 prompt_y = self.screen_height - (1.5 * 192) * self.displaySize
-                screen.blit(self.press_e_image, (prompt_x, prompt_y))
+                self.screen.blit(self.press_e_image, (prompt_x, prompt_y))
 
             if self.show_letter and len(self.letter_frames) > 0:
                 current_frame = self.letter_frames[self.letter_frame_index]
-                screen.blit(current_frame, (self.letter_x, self.letter_y))
+                self.screen.blit(current_frame, (self.letter_x, self.letter_y))
 
             if self.fade_overlay_active and self.fade_overlay_alpha > 0:
                 fade_surface = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
                 fade_surface.fill((0, 0, 0, self.fade_overlay_alpha))
-                screen.blit(fade_surface, (0, 0))
+                self.screen.blit(fade_surface, (0, 0))
 
             if self.game_over:
-                self.game_over_screen.draw(screen,self.level)
+                self.game_over_screen.draw(self.screen,self.level)
             # Removed os.system call - major performance bottleneck
             # print(self.FPS)  # Debug only
             self.show_fps(clock)
+            gun.ammo_gui(self.screen, self.screen_width,self.screen_height) 
             pygame.display.flip()
 
             if self.level == 2:

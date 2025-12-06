@@ -61,7 +61,7 @@ class BunkerMenu:
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.displaySize = displaySize
-        self.screen = pygame.display.set_mode((screen_width, screen_height))
+        self.screen = pygame.display.set_mode((screen_width, screen_height), pygame.RESIZABLE)
         pygame.display.set_caption("Dungeon Escape - Main Menu")
 
         self.menu_options = ["Start Game", "Controls", "Settings", "Credits", "Exit"]

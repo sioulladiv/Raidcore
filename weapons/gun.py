@@ -10,26 +10,34 @@ pygame.mixer.init()
 
 
 class Gun(Items): 
-    def __init__(self, x, y, type, displaySize, height=160, width=96): 
-        super().__init__(x, y, type, height, width)
-        self.width = width * displaySize
-        self.height = height * displaySize
+    def __init__(self, x, y, type, displaySize, height=9, width=10): 
+        # Use per-weapon base size; pistol is small (10x6) and gets a scale boost
+        base_width, base_height = width, height
+        scale_factor = 10 if type == "pistol" else 1
+
+        super().__init__(x, y, type, base_height, base_width)
+        self.width = base_width * displaySize * scale_factor
+        self.height = base_height * displaySize * scale_factor
         self.displaySize = displaySize
         self.type = type
         self.ammo = 0
-        self.max_ammo = 10
-        self.shoot_speed = 0.5
+        self.max_ammo = 100
+        self.shoot_speed = 1.5
         self.shoot_timer = 0
         self.bullet_speed = 10
         self.bullet_damage = 1
         self.bullet_radius = 5 * self.displaySize
         self.angle = 0
-        self.y_offset = 8 * self.displaySize
+        self.y_offset = 6 * self.displaySize
         self.orbit_distance = 5 * self.displaySize
         self.angle_offset = 0
 
         self.bullets = []
         self.can_shoot = True
+
+        self.fps_text_font = pygame.font.SysFont("Verdana", 50)
+        self.ammo_image = pygame.image.load("./Dungeon/frames/ammo.png")
+
 
         try:
             self.gunshot_sound = pygame.mixer.Sound("Assets/Sounds/gunshot.mp3")
@@ -39,12 +47,12 @@ class Gun(Items):
             self.gunshot_sound = None
 
         if self.type == "pistol":
-            self.ammo = 10
+            self.ammo = self.max_ammo
             self.max_ammo = 10
             self.shoot_speed = 0.5
-            self.bullet_speed = 4 
+            self.bullet_speed = 5  
             self.bullet_damage = 1 
-            self.bullet_radius = 1 
+            self.bullet_radius = max(0.5, self.displaySize * 0.8)  # Smaller radius for better collision
             self.image = pygame.image.load("./Dungeon/frames/pistol.png")
             self.image = pygame.transform.scale(self.image, (self.width, self.height))
     
@@ -138,36 +146,40 @@ class Gun(Items):
             surface.blit(rotated_image, rotated_rect)
         
         if pygame.mouse.get_pressed()[0] and player and camera and self.can_shoot:
-            self.shoot_timer = self.shoot_speed
+            if self.ammo > 0:
+                self.shoot_timer = self.shoot_speed
 
-            if self.gunshot_sound:
-                base_volume = random.uniform(0.2, 0.5)
-                final_volume = base_volume * game_settings.get_sfx_volume()
-                self.gunshot_sound.set_volume(final_volume)
-                self.gunshot_sound.play()
-            
-            mouse_x, mouse_y = pygame.mouse.get_pos()
-            world_mouse_x = (mouse_x - camera.offset_x) / camera.zoom
-            world_mouse_y = (mouse_y - camera.offset_y) / camera.zoom
-            
-            if self.pointing_left:
-                self.bullet_angle = self.angle + self.angle_offset
+                if self.gunshot_sound:
+                    base_volume = random.uniform(0.2, 0.5)
+                    final_volume = base_volume * game_settings.get_sfx_volume()
+                    self.gunshot_sound.set_volume(final_volume)
+                    self.gunshot_sound.play()
+
+                mouse_x, mouse_y = pygame.mouse.get_pos()
+                world_mouse_x = (mouse_x - camera.offset_x) / camera.zoom
+                world_mouse_y = (mouse_y - camera.offset_y) / camera.zoom
+
+                if self.pointing_left:
+                    self.bullet_angle = self.angle + self.angle_offset
+                else:
+                    self.bullet_angle = self.angle - 2.2*self.angle_offset
+                barrel_length = 10
+                barrel_x = self.x + math.cos(self.bullet_angle) * (barrel_length-6)
+                barrel_y = self.y + math.sin(self.bullet_angle) * (barrel_length-6)
+
+                bullet_angle = math.atan2(world_mouse_y - barrel_y, world_mouse_x - barrel_x)
+                bullet = Bullet(
+                    barrel_x,
+                    barrel_y,
+                    self.angle,
+                    self.bullet_speed,
+                    self.bullet_damage,
+                    self.bullet_radius
+                )
+                self.bullets.append(bullet)
+                self.ammo -=1
             else:
-                self.bullet_angle = self.angle - 2.2*self.angle_offset
-            barrel_length = 10
-            barrel_x = self.x + math.cos(self.bullet_angle) * (barrel_length-4)
-            barrel_y = self.y + math.sin(self.bullet_angle) * (barrel_length-4)
-            
-            bullet_angle = math.atan2(world_mouse_y - barrel_y, world_mouse_x - barrel_x)
-            bullet = Bullet(
-                barrel_x,
-                barrel_y,
-                self.angle,
-                self.bullet_speed,
-                self.bullet_damage,
-                self.bullet_radius
-            )
-            self.bullets.append(bullet)
+                print("no bullets")
         
         for bullet in self.bullets:
             # Only draw bullets that are visible on screen
@@ -186,3 +198,14 @@ class Gun(Items):
                     bullet.draw(surface, camera)
             else:
                 bullet.draw(surface, camera)
+
+    def ammo_gui(self, screen, screen_width, screen_height):
+        text = self.fps_text_font.render(f" x{int(self.ammo)}", True, (255,255,255))
+
+        ammo_image_scaled = pygame.transform.scale(self.ammo_image, (80, 80))
+        
+        ammo_x = 150
+        ammo_y = screen_height - 100
+        
+        screen.blit(ammo_image_scaled, (ammo_x, ammo_y))
+        screen.blit(text, (ammo_x + 70, ammo_y + 10))

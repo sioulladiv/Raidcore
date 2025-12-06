@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     menu = BunkerMenu(screen_width, screen_height, displaySize)
     menu_result = menu.run()
-
+    
     if menu_result == "start_game":
         game = Game(screen_width, screen_height, displaySize, zoom_level=1.0)
         game.run()

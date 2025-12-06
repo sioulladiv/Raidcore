@@ -10,25 +10,12 @@ class Bullet:
         self.radius = radius
         self.alive = True
         self.trail = []  
-        self.trail_length = 5
-        self.death_position = None
-        self.trail_dying = False
-        self.trail_move_timer = 0
-        self.trail_move_speed = 50 
+        self.trail_length = 3  
+        self.trail_counter = 0  
+        self.trail_spacing = 2  
         
-        self.current_frame = 0
-        self.animation_timer = 0
-        self.animation_speed = 50  
-
         pygame.mixer.init()
-
         self.bullet_impact_sound = pygame.mixer.Sound("Assets/Sounds/bullet_impact.mp3")
-        self.trail.append((self.x, self.y))
-        self.animation = []
-        for i in range(20):
-            img = pygame.image.load(f"./Dungeon/frames/bullet{'0' + str(i) if i < 10 else str(i)}.png")
-            img = pygame.transform.scale(img, (radius * 4, radius * 4))  
-            self.animation.append(img)
         
     def update(self, dt=16, collision_tiles=None):  
         if self.alive:
@@ -41,74 +28,57 @@ class Bullet:
                 self.x += dx
                 self.y += dy
             
-            self.trail.append((self.x, self.y))
-            if len(self.trail) > self.trail_length:
-                self.trail.pop(0)
+            self.trail_counter += 1
+            if self.trail_counter >= self.trail_spacing:
+                self.trail.append((self.x, self.y))
+                self.trail_counter = 0
+                if len(self.trail) > self.trail_length:
+                    self.trail.pop(0)
         else:
-            if not self.trail_dying:
-                self.death_position = (self.x, self.y)
-                self.trail_dying = True
-            
-            self.trail_move_timer += dt
-            if self.trail_move_timer >= self.trail_move_speed and self.trail:
-                self.trail_move_timer = 0
-                
-                new_trail = []
-                for i, (trail_x, trail_y) in enumerate(self.trail):
-                    if i < len(self.trail) - 1:
-                        next_x, next_y = self.trail[i + 1]
-                    else:
-                        next_x, next_y = self.death_position
-                    
-                    dx = next_x - trail_x
-                    dy = next_y - trail_y
-                    distance = math.sqrt(dx * dx + dy * dy)
-                    
-                    if distance > self.speed / 2: 
-                        dx = (dx / distance) * self.speed
-                        dy = (dy / distance) * self.speed
-                        new_trail.append((trail_x + dx, trail_y + dy))
-                    elif distance > 1:  
-                        new_trail.append((next_x, next_y))
-                
-                self.trail = new_trail
-            
-        self.animation_timer += dt
-        if self.animation_timer >= self.animation_speed:
-            self.current_frame = (self.current_frame + 1) % len(self.animation)
-            self.animation_timer = 0
+            self.trail.clear()
 
     def draw(self, surface, camera):
-        if not self.trail:
+        if not self.alive and not self.trail:
             return
-            
-        for i, (trail_x, trail_y) in enumerate(self.trail):
-            alpha = int(255 * (i / len(self.trail)))
-            
-            screen_x = trail_x * camera.zoom + camera.offset_x
-            screen_y = trail_y * camera.zoom + camera.offset_y
-            
-            size = max(1, int(self.radius * (i / len(self.trail)) * camera.zoom))
-            
-            pygame.draw.circle(surface, (255, i * 50, 0), (int(screen_x), int(screen_y)), size)
         
+        # Draw trailing pixels (smaller white squares behind the main bullet)
+        if len(self.trail) > 1:
+            for i in range(len(self.trail) - 1):  # Skip the last one (current bullet position)
+                trail_x, trail_y = self.trail[i]
+                
+                screen_x = trail_x * camera.zoom + camera.offset_x
+                screen_y = trail_y * camera.zoom + camera.offset_y
+                
+                # Smaller pixel size for trail (gets progressively smaller)
+                size_factor = (i + 1) / len(self.trail)  # 0.33, 0.66 for 3-point trail
+                trail_pixel_size = max(1, int(camera.zoom * 2 * size_factor * 0.7))  # 70% of main bullet
+                
+                trail_rect = pygame.Rect(
+                    int(screen_x - trail_pixel_size // 2),
+                    int(screen_y - trail_pixel_size // 2),
+                    trail_pixel_size,
+                    trail_pixel_size
+                )
+                pygame.draw.rect(surface, (255, 255, 255), trail_rect)  # White trail pixels
+        
+        # Draw main bullet as a larger white pixel (square)
         if self.alive:
             screen_x = self.x * camera.zoom + camera.offset_x
             screen_y = self.y * camera.zoom + camera.offset_y
             
-            current_image = self.animation[self.current_frame]
+            # Main bullet is white and larger
+            bullet_color = (255, 255, 255)  # White
             
-            rotated_image = pygame.transform.rotate(current_image, -math.degrees(self.angle))
+            # Main bullet pixel size (even smaller)
+            pixel_size = max(1, int(camera.zoom * 1.5))  # Even smaller square
             
-            if camera.zoom != 1.0:
-                scaled_width = int(rotated_image.get_width() * camera.zoom)
-                scaled_height = int(rotated_image.get_height() * camera.zoom)
-                rotated_image = pygame.transform.scale(rotated_image, (scaled_width, scaled_height))
-            
-            image_rect = rotated_image.get_rect()
-            image_rect.center = (int(screen_x), int(screen_y))
-            
-            surface.blit(rotated_image, image_rect)
+            bullet_rect = pygame.Rect(
+                int(screen_x - pixel_size // 2),
+                int(screen_y - pixel_size // 2),
+                pixel_size,
+                pixel_size
+            )
+            pygame.draw.rect(surface, bullet_color, bullet_rect)
     
     def move_and_collide(self, dx, dy, tiles):
         new_x = self.x + dx
@@ -147,5 +117,5 @@ class Bullet:
         )
 
     def is_completely_dead(self):
-        """Check if bullet and all trail points are dead"""
-        return not self.alive and len(self.trail) == 0
+        """Check if bullet is dead (trail clears immediately)"""
+        return not self.alive

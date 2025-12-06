@@ -128,7 +128,7 @@ class Enemy:
     def get_distance_to_player(self, player):
         return ((player.x - self.x) ** 2 + (player.y - self.y) ** 2) ** 0.5
 
-    def update(self, keys, tiles, player, enemies, collision_grid, bullets=None, health_bar=None, particles=None, game=None): 
+    def update(self, keys, tiles, player, enemies, collision_grid, bullets=None, health_bar=None, particles=None, game=None, knife_attack=None, knife_damage=0): 
         self.path_find_timer += 1
         distance_to_player = self.get_distance_to_player(player)
 
@@ -237,6 +237,41 @@ class Enemy:
         else:
             self.play_sound(player, "idle")
 
+        # Check knife attack collision
+        if knife_attack and knife_damage > 0:
+            enemy_rect = self.get_rect(self.x, self.y)
+            if enemy_rect.colliderect(knife_attack):
+                self.lives -= knife_damage
+                self.hit_timer = 10
+                
+                if self.lives <= 0:
+                    if self in enemies:
+                        # Stop all currently playing sounds
+                        for sound_name, sound_list in self.sound_objects.items():
+                            if sound_list is not None:
+                                for sound in sound_list:
+                                    if hasattr(sound, 'stop'):
+                                        sound.stop()
+                        self.play_sound(player, "death")
+                        
+                        # Collect XP before removing enemy
+                        if game is not None and hasattr(self, 'xp_reward'):
+                            game.collect_xp(self.xp_reward)
+                        
+                        enemies.remove(self)
+                        if particles is not None:
+                            for i in range(self.particle_num): 
+                                particles.append(Particle(
+                                    self.x + self.width // 2, 
+                                    self.y + self.height // 2, 
+                                    random.uniform(-1, 1),  
+                                    random.uniform(-1, 1), 
+                                    self.colour,
+                                    random.randint(3, 5),  
+                                    random.randint(30, 60),
+                                ))
+        
+        # Check bullet collision
         if bullets:
             enemy_rect = self.get_rect(self.x, self.y)
             for bullet in list(bullets):

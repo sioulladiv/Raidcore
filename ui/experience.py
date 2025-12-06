@@ -6,7 +6,7 @@ class ExperienceBar:
     def __init__(self, x, y, width, height, displaySize):
         self.x = x
         self.y = y
-        self.width = width
+        self.width = width *2
         self.height = height
         self.displaySize = displaySize
 
@@ -25,10 +25,7 @@ class ExperienceBar:
         pass
 
     def draw(self, screen):
-        outer2 = pygame.Rect(self.x - self.border_thickness, self.y - self.border_thickness,
-                             self.width + 2 * self.border_thickness, self.height + 2 * self.border_thickness)
-        pygame.draw.rect(screen, self.secondary_border, outer2, self.border_thickness)
-
+        # Draw border
         outer1 = pygame.Rect(self.x, self.y, self.width, self.height)
         pygame.draw.rect(screen, self.border_color, outer1, self.border_thickness)
 
@@ -37,10 +34,13 @@ class ExperienceBar:
         inner_w = max(0, self.width - 2 * self.border_thickness)
         inner_h = max(0, self.height - 2 * self.border_thickness)
 
+        # Draw background
         inner_bg = pygame.Rect(inner_x, inner_y, inner_w, inner_h)
         pygame.draw.rect(screen, self.background_color, inner_bg)
 
-        fill_w = int(inner_w * (self.experience / 100.0))
-        if fill_w > 0:
-            fill_rect = pygame.Rect(inner_x, inner_y, fill_w, inner_h)
+        # Draw fill from bottom to top (vertical bar)
+        fill_h = int(inner_h * (self.experience / 100.0))
+        if fill_h > 0:
+            fill_y = inner_y + inner_h - fill_h  # Start from bottom
+            fill_rect = pygame.Rect(inner_x, fill_y, inner_w, fill_h)
             pygame.draw.rect(screen, self.fill_color, fill_rect)
