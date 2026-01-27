@@ -1,4 +1,11 @@
 {
+   "level0": [
+      {
+         "file": "Assets/music/WizardInTower.mp3",
+         "volume": 0.7,
+         "loop": true
+      }
+   ],
    "level1": [
       {
          "file": "Assets/music/WizardInTower.mp3",

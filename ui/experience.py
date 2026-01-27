@@ -16,7 +16,7 @@ class ExperienceBar:
         self.secondary_border = (241, 241, 241)
         self.background_color = (0, 0, 0)
         self.fill_color = (150, 150, 150)
-        self.border_thickness = max(1, int(self.height * 0.15))
+        self.border_thickness = max(1, int(self.height * 0.07))
 
     def update(self, experience):
         self.experience = max(0, min(100, int(experience)))
@@ -25,7 +25,6 @@ class ExperienceBar:
         pass
 
     def draw(self, screen):
-        # Draw border
         outer1 = pygame.Rect(self.x, self.y, self.width, self.height)
         pygame.draw.rect(screen, self.border_color, outer1, self.border_thickness)
 
@@ -34,13 +33,11 @@ class ExperienceBar:
         inner_w = max(0, self.width - 2 * self.border_thickness)
         inner_h = max(0, self.height - 2 * self.border_thickness)
 
-        # Draw background
         inner_bg = pygame.Rect(inner_x, inner_y, inner_w, inner_h)
         pygame.draw.rect(screen, self.background_color, inner_bg)
 
-        # Draw fill from bottom to top (vertical bar)
         fill_h = int(inner_h * (self.experience / 100.0))
         if fill_h > 0:
-            fill_y = inner_y + inner_h - fill_h  # Start from bottom
+            fill_y = inner_y + inner_h - fill_h  
             fill_rect = pygame.Rect(inner_x, fill_y, inner_w, fill_h)
             pygame.draw.rect(screen, self.fill_color, fill_rect)

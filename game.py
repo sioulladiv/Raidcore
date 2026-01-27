@@ -5,9 +5,11 @@ from ui.menu import BunkerMenu
 from entities.enemy import Enemy
 from entities.player import Player  
 from entities.particle import Particle
+from entities.dust_particle import DustParticleSystem
 from world.tilemap import TiledMap, Tile
 from world.lighting import Lighting
 from world.camera import Camera
+#from utils.occlusion_lighting import OcclusionLighting
 from world.chest import Chest
 from weapons.gun import Gun
 from weapons.bullet import Bullet
@@ -20,6 +22,7 @@ from world.lever import Lever
 from utils.culling import FrustumCuller
 from config.game_settings import game_settings
 from weapons.knife import Knife
+from ui.inventory import inventory
 
 import json
 import os
@@ -42,8 +45,15 @@ class Game:
         self.displaySize = displaySize
         self.zoom_level = zoom_level
         self.FPS = game_settings.get_fps_cap()
-        self.current_weapon = "knife"
-        
+        self.inventory = inventory()
+        # Start with a gun and a knife in inventory
+        self.gun = Gun(0, 0, "pistol", self.displaySize)
+        self.knife = Knife(0, 0, "knife", self.displaySize)
+        self.inventory.add_item(self.gun, 0)
+        self.inventory.add_item(self.knife, 1)
+        self.current_weapon_index = 0
+        self.current_weapon = self.inventory[self.current_weapon_index]['item']
+
         try:
             if game_settings.get_vsync():
                 self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), vsync=1)
@@ -52,9 +62,9 @@ class Game:
         except TypeError:
             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
             
-        self.level = 1
+        self.level = 0
         self.pling_sounds = []
-        self.xp_sound_events = []  # Track active XP sound timer events
+        self.xp_sound_events = []  
 
         self.fps_text_font = pygame.font.SysFont("Verdana", 20)
         
@@ -97,11 +107,10 @@ class Game:
         self.health_bar = HealthBar(int(0.5 * screen_width) - 0.5 * int(300 * self.displaySize) , int(screen_height - 150 * self.displaySize),
                         int(8 * self.displaySize), int(3 * self.displaySize), self.displaySize)
 
-        # Vertical experience bar at bottom right (width=30, height=150)
         bar_width = int(30 * self.displaySize)
         bar_height = int(150 * self.displaySize)
-        bar_x = self.screen_width - bar_width - int(20 * self.displaySize)  # 20px from right edge
-        bar_y = self.screen_height - bar_height - int(20 * self.displaySize)  # 20px from bottom
+        bar_x = self.screen_width - bar_width - int(100 * self.displaySize)  # 100px from right edge
+        bar_y = self.screen_height - bar_height - int(100 * self.displaySize)  # 20px from bottom
         self.experience_bar = ExperienceBar(bar_x, bar_y, bar_width, bar_height, self.displaySize)
         self.player_damage_cooldown = 0
         self.player_damage_cooldown_duration = 60 
@@ -145,6 +154,7 @@ class Game:
 
         pygame.font.init()
         self.xp_font = pygame.font.Font(None, 36)
+        self.inventory = inventory()
 
         #load all animations from letter_animation folder for letter opening animation on level 1 :)
         self.letter_frames = []
@@ -206,6 +216,9 @@ class Game:
         
         
         collision_tiles, spike_tiles = self.reload_collision_data()
+        
+        # Initialize occlusion lighting
+        #occlusion_lighting = OcclusionLighting(collision_tiles)
 
         endlevel_tiles = self.game_map.endlevel_layer("endlevel")
 
@@ -222,6 +235,12 @@ class Game:
         clock = pygame.time.Clock()
         running = True
         self.particles = []
+        
+        # Initialize dust particle system for lighting effects
+        self.dust_particles = DustParticleSystem(num_particles=30, light_radius=350)
+        player_center_x = self.player.x + self.player.width / 2
+        player_center_y = self.player.y + self.player.height / 2
+        self.dust_particles.initialize(player_center_x, player_center_y)
     
       
         self.map_needs_collision_update = False
@@ -243,6 +262,8 @@ class Game:
 
     
         while running:
+            
+            self.current_weapon = self.inventory[self.current_weapon_index]['item']
             # print(f"x: {self.player.x}, y: {self.player.y}")  # Only for debugging
             self.life = self.health_bar.life
             self.experience = self.experience_bar.experience
@@ -263,57 +284,14 @@ class Game:
 
             if not self.game_over:
                 self.music.update(self.level)
-            if self.current_weapon == "gun":
+            if self.current_weapon == "pistol":
                 gun.update(camera, self.player, dt, collision_tiles)
             elif self.current_weapon == "knife":
                 knife.update(camera, self.player, dt, collision_tiles)
             
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.VIDEORESIZE:
-                    # Get new window dimensions
-                    self.screen_width = event.w
-                    self.screen_height = event.h
-
-                    # Recreate the display surface
-                    self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
-
-                    # Recalculate scale factor
-                    self.displaySize = self.screen_width / self.base_width
-                    
-                    # Update camera dimensions
-                    camera.width = self.screen_width
-                    camera.height = self.screen_height
-                    
-                    # Update culler dimensions
-                    culler = FrustumCuller(self.screen_width, self.screen_height)
-                    
-                    # Recreate UI elements with new scale
-                    self.current_health_bar = HealthBar(int(20 * self.displaySize), int(30 * self.displaySize),
-                                        int(300 * self.displaySize), int(60 * self.displaySize), self.displaySize)
-                    self.current_health_bar.update(self.life)
-                    health_bar = self.current_health_bar
-                    
-                    # Vertical experience bar at bottom right
-                    bar_width = int(30 * self.displaySize)
-                    bar_height = int(150 * self.displaySize)
-                    bar_x = self.screen_width - bar_width - int(20 * self.displaySize)
-                    bar_y = self.screen_height - bar_height - int(20 * self.displaySize)
-                    self.current_experience_bar = ExperienceBar(bar_x, bar_y, bar_width, bar_height, self.displaySize)
-                    self.current_experience_bar.update(self.experience)
-                    experience_bar = self.current_experience_bar
-                    
-                    # Update game over screen
-                    self.game_over_screen = GameOverScreen(self.screen_width, self.screen_height)
-                    
-                    # Update press E image
-                    self.press_e_image = pygame.image.load("Assets/press_e.png")
-                    self.press_e_image = pygame.transform.scale(self.press_e_image, 
-                                                                (int(240 * self.displaySize), int(192 * self.displaySize)))
-                    
-                    # Update gun display size
-                    gun.displaySize = self.displaySize
+                    running = False 
                 elif event.type >= pygame.USEREVENT + 1 and event.type <= pygame.USEREVENT + 10:
                     # Handle delayed XP pling sounds like in minecraft
                     sound_index = event.type - pygame.USEREVENT - 1
@@ -393,16 +371,41 @@ class Game:
                                                 self.lever_sound.play()  
                                                 #print(f"Pulled {lever_id}")
                                         break
+                    if event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8]:
+                        self.current_weapon_index = event.key - pygame.K_1
+                    if event.key == pygame.K_e:
+                        self.inventory.active = not self.inventory.active
 
+                    self.current_weapon_index = min(self.current_weapon_index, len(self.inventory)-1)
+                    self.current_weapon = self.inventory[self.current_weapon_index]['item']
+                    if self.current_weapon:
+                        print(f"Switched to {self.current_weapon}")
+
+                elif event.type == pygame.MOUSEWHEEL:
+                    if event.y > 0:
+                        self.current_weapon_index = (self.current_weapon_index - 1) % len(self.inventory)
+                        print("swithcing weapon down")
+                    elif event.y < 0:
+                        self.current_weapon_index = (self.current_weapon_index + 1) % len(self.inventory)
+                        print("swithcing weapon up")
+                    self.inventory.slot = self.current_weapon_index
+
+                    self.current_weapon = self.inventory[self.current_weapon_index]['item']
+                    if self.current_weapon:
+                        print(f"Switched to {self.current_weapon}")
             self.player.update_animation(dt)
             health_bar.update_animation(dt) 
-
             keys = pygame.key.get_pressed()
 
             if not self.show_letter and not self.game_over:
                 self.player.update(keys, collision_tiles, endlevel_tiles, self, spike_tiles)
                 camera.update(self.player)
                 light.update(self.player, camera, self.lightlevel)
+                
+                # Update dust particles
+                player_center_x = self.player.x + self.player.width / 2
+                player_center_y = self.player.y + self.player.height / 2
+                self.dust_particles.update(dt, player_center_x, player_center_y, light.radius)
 
                 self.show_press_e = False
                 
@@ -423,7 +426,7 @@ class Game:
                 # update enemies every frame
                 for enemy in list(self.enemies):
                     # Pass appropriate weapon data based on current weapon
-                    if self.current_weapon == "gun":
+                    if self.current_weapon == "pistol":
                         enemy.update(keys, collision_tiles, self.player, self.enemies, self.path_grid, gun.bullets, health_bar, self.particles, self)
                     elif self.current_weapon == "knife":
                         # For knife, pass attack info if currently attacking
@@ -472,6 +475,8 @@ class Game:
                 culler.culled_count = 0
                 culler.total_count = 0
 
+            
+
             self.player.draw(self.screen, camera)
 
             # Cull and draw enemies
@@ -488,8 +493,11 @@ class Game:
             for particle in visible_particles:
                 particle.draw(self.screen, camera)
 
+            # Draw dust particles in the light (before the light overlay)
+            self.dust_particles.draw(self.screen, camera)
+            
             light.draw(self.screen, camera)
-            if self.current_weapon == "gun":
+            if self.current_weapon == "pistol":
                 gun.draw(self.screen, camera, self.player, dt)
             elif self.current_weapon == "knife":
                 knife.draw(self.screen, camera, self.player, dt)
@@ -497,6 +505,8 @@ class Game:
             health_bar.draw(self.screen, self.player, camera)
             # Draw the experience bar
             self.experience_bar.draw(self.screen)
+
+            self.inventory.draw(self.screen, self.player, camera)
 
             # Draw XP display
             #xp_text = self.xp_font.render(f"XP: {self.xp}", True, (255, 255, 255))
@@ -521,7 +531,7 @@ class Game:
             # Removed os.system call - major performance bottleneck
             # print(self.FPS)  # Debug only
             self.show_fps(clock)
-            gun.ammo_gui(self.screen, self.screen_width,self.screen_height) 
+            if self.current_weapon == "pistol": gun.ammo_gui(self.screen, self.screen_width,self.screen_height) 
             pygame.display.flip()
 
             if self.level == 2:
@@ -542,6 +552,9 @@ class Game:
             # Update collision tiles when map state changes
             if self.map_needs_collision_update:
                 collision_tiles, spike_tiles = self.reload_collision_data()
+                
+                # Update occlusion lighting with new collision data
+                #occlusion_lighting = OcclusionLighting(collision_tiles)
                 
                 # For level 2, handle spike tiles based on lever state
                 if self.level == 2 and hasattr(self, 'level2') and self.level2.all_levers_pulled:
@@ -813,7 +826,7 @@ class Game:
         self.experience_bar.update(self.xp)
     def restart_game(self):
         # Reset level and game state
-        self.level = 1
+        self.level = 0
         self.game_over = False
         self.death_sound_played = False
         self.spikes_deactivated_sound_played = False
@@ -827,10 +840,10 @@ class Game:
         self.xp = 0
         
         # Reset music
-        self.music.play_level_music(1)
+        self.music.play_level_music(0)
         
-        # Reload level 1 map
-        self.game_map = TiledMap("Tiled/level1.tmx")
+        # Reload level 0 map
+        self.game_map = TiledMap("Tiled/level0.tmx")
         self.game_map.set_current_level(self.level)
         self.path_grid = self.make_path_grid()
         
@@ -875,10 +888,9 @@ class Game:
         self.fade_overlay_active = False
         
         # Reset lighting level
-        self.lightlevel = level_data["level1"]["lighting"]
+        self.lightlevel = level_data["level0"]["lighting"]
         
         # Force collision data reload
         self.map_needs_collision_update = True
         
         # Reset gun state (will be recreated in run method)
-        # This ensures the gun doesn't carry over bullets or state from previous game

@@ -24,6 +24,7 @@ class Knife(Items):
         self.orbit_distance = 5 * self.displaySize
         self.angle_offset = 0
         self.can_attack = True
+        self.pointing_left = False  
         
         # Slash animation properties
         self.is_slashing = False
@@ -32,16 +33,16 @@ class Knife(Items):
         self.slash_particles = []
 
         try:
-            self.slash_sound = pygame.mixer.Sound("Assets/Sounds/gunshot.mp3")  # Replace with knife slash sound
+            self.slash_sound = pygame.mixer.Sound("Assets/Sounds/sword.mp3")  
             self.slash_sound.set_volume(0.4)
         except pygame.error:
             print("Warning: Could not load slash sound file")
             self.slash_sound = None
 
         if self.type == "knife":
-            self.attack_speed = 0.2  # Faster animation (was 0.3)
+            self.attack_speed = 0.2  
             self.damage = 2
-            self.image = pygame.image.load("./Dungeon/frames/knife.png")  # Replace with knife.png
+            self.image = pygame.image.load("./Dungeon/frames/knife.png")  
             self.image = pygame.transform.scale(self.image, (self.width, self.height))
     
     def update(self, camera=None, player=None, dt=0, collision_tiles=None):

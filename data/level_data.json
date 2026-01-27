@@ -1,11 +1,15 @@
 {
+    "level0": {
+        "start_pos": [100, 100],
+        "lighting": 210
+    },
     "level1": {
         "start_pos": [390, 385],
         "lighting": 210
     },
     "level2": {
         "start_pos": [390, 740],
-        "lighting": 240
+        "lighting": 225
     },
     "level3": {
         "start_pos": [871, 876],

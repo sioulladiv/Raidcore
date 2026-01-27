@@ -10,7 +10,8 @@ if __name__ == "__main__":
     screen_height = info.current_h
 
     #screen_width = 1200
-    #screen_height = screen_width / (16 / 9)
+    #screen_height = screen_width / (16 / 9)\
+
 
     base_width = 2560
     base_height = 1440

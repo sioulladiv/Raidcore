@@ -114,7 +114,6 @@ class Gun(Items):
                         updated_bullets.append(bullet)
             self.bullets = updated_bullets
         else:
-            # No camera, simpler update
             self.bullets = [b for b in self.bullets if (b.update(dt, collision_tiles), not b.is_completely_dead())[1]]
 
     def draw(self, surface, camera=None, player=None, dt=0):
@@ -182,13 +181,10 @@ class Gun(Items):
                 print("no bullets")
         
         for bullet in self.bullets:
-            # Only draw bullets that are visible on screen
             if camera:
-                # Check if bullet is within screen bounds with some margin
                 screen_x = bullet.x * camera.zoom + camera.offset_x
                 screen_y = bullet.y * camera.zoom + camera.offset_y
                 
-                # Use a margin for smooth transitions
                 margin = 100
                 screen_width = pygame.display.get_surface().get_width()
                 screen_height = pygame.display.get_surface().get_height()

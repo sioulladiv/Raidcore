@@ -84,6 +84,26 @@ class TiledMap:
                     ))
         return self.collision_tiles
     
+    def shadow_tiles_layer(self, layer_names: list):
+        """Get all tiles that should cast shadows (walls, obstacles, but not floor)"""
+        shadow_tiles = []
+        for layer_name in layer_names:
+            try:
+                layer = self.tmx_data.get_layer_by_name(layer_name)
+                for x, y, gid in layer:
+                    tile_image = self.tmx_data.get_tile_image_by_gid(gid)
+                    if tile_image:
+                        shadow_tiles.append(pygame.Rect(
+                            x * self.tmx_data.tilewidth, 
+                            y * self.tmx_data.tileheight, 
+                            self.tmx_data.tilewidth, 
+                            self.tmx_data.tileheight
+                        ))
+            except ValueError:
+                # Layer not found, skip it
+                continue
+        return shadow_tiles
+    
     def endlevel_layer(self, layer_name: str):
         self.endlevel_tiles = []
         layer = self.tmx_data.get_layer_by_name(layer_name)

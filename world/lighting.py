@@ -1,9 +1,16 @@
 import pygame
+import random
+
 class Lighting:
     def __init__(self, radius, darkness=210):
         self.radius = radius
         self.darkness = darkness
         self.last_darkness = darkness
+        
+        # Flickering effect
+        self.flicker_time = 0
+        self.flicker_intensity = 0
+        self.base_radius = radius
         
         # Cache the light gradient surface
         self.surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
@@ -17,13 +24,35 @@ class Lighting:
         """Regenerate the light gradient surface (only when darkness changes)"""
         self.surface.fill((0, 0, 0, 0))  # Clear surface
         for r in range(self.radius):
-            alpha = int((r / self.radius) * self.darkness)
-            pygame.draw.circle(self.surface, (0, 255, 0, alpha), (self.radius, self.radius), self.radius - r)
+            # Quadratic falloff for smoother, more realistic gradient
+            alpha = int(((r / self.radius) ** 2) * self.darkness)
+            
+            # Warm torch color (orange/yellow) with gradient from bright center to edge
+            ratio = r / self.radius
+            red = int(255 * (1 - ratio * 0.2))  # Stays bright
+            green = int(200 - ratio * 50)  # Moderate, fades
+            blue = int(100 - ratio * 80)  # Low, creates warm tone
+            
+            pygame.draw.circle(self.surface, (red, green, blue, alpha), (self.radius, self.radius), self.radius - r)
 
     def update(self, player, camera, darkness=210):
-        # Only regenerate if darkness changed
-        if self.darkness != darkness:
+        # Flickering effect - subtle random variation
+        self.flicker_time += 0.1
+        self.flicker_intensity = random.uniform(-2, 3)  # Slight positive bias for more brightness
+        
+        # Apply flicker to radius
+        flickered_radius = int(self.base_radius + self.flicker_intensity + 
+                              pygame.math.Vector2(1, 0).rotate_rad(self.flicker_time * 0.5).x * 1.5)
+        
+        # Only regenerate if darkness or radius changed significantly
+        if self.darkness != darkness or abs(self.radius - flickered_radius) > 0:
+            self.radius = flickered_radius
             self.darkness = darkness
+            
+            # Recreate surface if size changed
+            if self.surface.get_width() != self.radius * 2:
+                self.surface = pygame.Surface((self.radius * 2, self.radius * 2), pygame.SRCALPHA)
+            
             self._regenerate_light_surface()
 
         player_center_x = player.x + (player.width / 2)
