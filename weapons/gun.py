@@ -117,31 +117,31 @@ class Gun(Items):
             self.bullets = [b for b in self.bullets if (b.update(dt, collision_tiles), not b.is_completely_dead())[1]]
 
     def draw(self, surface, camera=None, player=None, dt=0):
-        if player: 
+        if player:
             pivot_x = player.x + player.width / 2
             pivot_y = player.y + player.height / 2 + self.y_offset
-            
+
             self.x = pivot_x + math.cos(self.angle) * self.orbit_distance
             self.y = pivot_y + math.sin(self.angle) * self.orbit_distance
-        
+
         gun_image = self.image
-        
+
         if self.pointing_left:
             gun_image = pygame.transform.flip(gun_image, False, True)
-        
+
         rotated_image = pygame.transform.rotate(gun_image, -math.degrees(self.angle))
         rotated_rect = rotated_image.get_rect()
-        
+
         if camera:
             draw_x = self.x * camera.zoom + camera.offset_x
             draw_y = self.y * camera.zoom + camera.offset_y
-            
+
             rotated_rect.center = (draw_x, draw_y)
-            
+
             surface.blit(rotated_image, rotated_rect)
         else:
             rotated_rect.center = (self.x, self.y)
-            
+
             surface.blit(rotated_image, rotated_rect)
         
         if pygame.mouse.get_pressed()[0] and player and camera and self.can_shoot:

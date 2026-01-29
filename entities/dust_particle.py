@@ -11,6 +11,7 @@ class DustParticle:
         # Random position within light cone
         angle = random.uniform(0, 2 * 3.14159)
         distance = random.uniform(0, light_radius * 0.8)
+        self.parralax = random.uniform(0.8, 0.9)
         self.x += distance * pygame.math.Vector2(1, 0).rotate_rad(angle).x
         self.y += distance * pygame.math.Vector2(1, 0).rotate_rad(angle).y
         
@@ -24,7 +25,7 @@ class DustParticle:
         
         # Floating animation
         self.time = random.uniform(0, 100)
-        self.float_speed = random.uniform(0.02, 0.05)
+        self.float_speed = random.uniform(0.005, 0.01)
         
     def update(self, dt, player_center_x, player_center_y):
         """Update particle position with floating effect"""
@@ -50,7 +51,6 @@ class DustParticle:
         return distance > self.light_radius
     
     def respawn(self, player_center_x, player_center_y, light_radius):
-        """Respawn particle near player"""
         angle = random.uniform(0, 2 * 3.14159)
         distance = random.uniform(0, light_radius * 0.5)
         self.x = player_center_x + distance * pygame.math.Vector2(1, 0).rotate_rad(angle).x
@@ -58,10 +58,9 @@ class DustParticle:
         self.alpha = random.randint(30, 80)
         
     def draw(self, surface, camera):
-        """Draw dust particle"""
         if self.alpha <= 0:
             return
-            
+        parallax = self.parralax
         screen_x = int(self.x * camera.zoom + camera.offset_x)
         screen_y = int(self.y * camera.zoom + camera.offset_y)
         
@@ -80,21 +79,18 @@ class DustParticle:
 
 
 class DustParticleSystem:
-    """Manages multiple dust particles in the light"""
     def __init__(self, num_particles=60, light_radius=200):
         self.particles = []
         self.num_particles = num_particles
         self.light_radius = light_radius
         
     def initialize(self, player_center_x, player_center_y):
-        """Create initial particles"""
         self.particles = [
             DustParticle(player_center_x, player_center_y, self.light_radius)
             for _ in range(self.num_particles)
         ]
     
     def update(self, dt, player_center_x, player_center_y, light_radius):
-        """Update all particles"""
         self.light_radius = light_radius
         
         for particle in self.particles:
@@ -103,6 +99,5 @@ class DustParticleSystem:
                 particle.respawn(player_center_x, player_center_y, light_radius)
     
     def draw(self, surface, camera):
-        """Draw all particles"""
         for particle in self.particles:
             particle.draw(surface, camera)

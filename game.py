@@ -9,7 +9,6 @@ from entities.dust_particle import DustParticleSystem
 from world.tilemap import TiledMap, Tile
 from world.lighting import Lighting
 from world.camera import Camera
-#from utils.occlusion_lighting import OcclusionLighting
 from world.chest import Chest
 from weapons.gun import Gun
 from weapons.bullet import Bullet
@@ -46,14 +45,23 @@ class Game:
         self.zoom_level = zoom_level
         self.FPS = game_settings.get_fps_cap()
         self.inventory = inventory()
-        # Start with a gun and a knife in inventory
+        
+        #set initial weapons and we will add them later to the inventory
+        #i will some more definition as I create more items
         self.gun = Gun(0, 0, "pistol", self.displaySize)
         self.knife = Knife(0, 0, "knife", self.displaySize)
+
+        #added items to inventory
         self.inventory.add_item(self.gun, 0)
         self.inventory.add_item(self.knife, 1)
+
+        # starting weapon index, index used to track weapon used and switch between them
         self.current_weapon_index = 0
+
+        #fetch current weapon from inventory class
         self.current_weapon = self.inventory[self.current_weapon_index]['item']
 
+        # vsync which basically sync framrate with monitor retfresh rate to avoid "tearing"
         try:
             if game_settings.get_vsync():
                 self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), vsync=1)
@@ -61,11 +69,13 @@ class Game:
                 self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         except TypeError:
             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-            
+        
+        #start on level 0 and set sound files and xp events list
         self.level = 0
         self.pling_sounds = []
         self.xp_sound_events = []  
 
+        #set font for FPS display on top right
         self.fps_text_font = pygame.font.SysFont("Verdana", 20)
         
         
@@ -79,9 +89,10 @@ class Game:
                         sound = pygame.mixer.Sound(sound_path)
                         self.pling_sounds.append(sound)
                         #print(f"Loaded orb sound: {str(filename)}")
+                        #print error if sound doesn't load
                     except pygame.error as e:
                         print(f"Failed to load {filename}: {e}")
-        
+        #if plings ounds array is empty, load default sound for orb, in case folder is missing
         if not self.pling_sounds:
             try:
                 self.pling_sounds.append(pygame.mixer.Sound("Assets/Sounds/orb.mp3"))
@@ -92,28 +103,40 @@ class Game:
         print(f"Total orb sounds loaded: {len(self.pling_sounds)}")
         pygame.display.set_caption("Dungeon Game")
 
-        self.game_map = TiledMap("Tiled/level{}.tmx".format(self.level))
+        # load the initial map for the first level
+        self.game_map = TiledMap(f"Tiled/level{self.level}.tmx")
         self.game_map.set_current_level(self.level)
-        self.path_grid_cache = None  # Cache for pathfinding grid
+        self.path_grid_cache = None  
 
+        #set camera default
         self.camera = Camera(self.screen_width, self.screen_height, zoom_level)
 
+        #initialise player and other entities and utils for the game
         self.player = Player(100, 100, 32, 32, (0, 255, 0), self.displaySize)
         self.enemies = []
         self.bullets = []
         self.music = Music()
         self.light = Lighting(200)
 
+        
+        """  Onscreen elements initialisation"""
         self.health_bar = HealthBar(int(0.5 * screen_width) - 0.5 * int(300 * self.displaySize) , int(screen_height - 150 * self.displaySize),
                         int(8 * self.displaySize), int(3 * self.displaySize), self.displaySize)
 
+        #set bar to bottom right corner
         bar_width = int(30 * self.displaySize)
         bar_height = int(150 * self.displaySize)
-        bar_x = self.screen_width - bar_width - int(100 * self.displaySize)  # 100px from right edge
-        bar_y = self.screen_height - bar_height - int(100 * self.displaySize)  # 20px from bottom
+        bar_x = self.screen_width - bar_width - int(100 * self.displaySize) #100 pixels on right side
+        bar_y = self.screen_height - bar_height - int(100 * self.displaySize)  #100 pixels from bottom edge
+
+
+
+        #set experience bar
         self.experience_bar = ExperienceBar(bar_x, bar_y, bar_width, bar_height, self.displaySize)
-        self.player_damage_cooldown = 0
-        self.player_damage_cooldown_duration = 60 
+        
+        # set functionality variables for the game
+        self.player_damage_cooldown = 0 #cooldown timer to stop losing health too fast
+        self.player_damage_cooldown_duration = 60  # invicibility duration in frames to avoid instantly dying ;:)
         self.xp = 0
 
         self.menu = BunkerMenu(self.screen_width // 2 - 150, self.screen_height // 2 - 150, self.displaySize)
@@ -154,7 +177,6 @@ class Game:
 
         pygame.font.init()
         self.xp_font = pygame.font.Font(None, 36)
-        self.inventory = inventory()
 
         #load all animations from letter_animation folder for letter opening animation on level 1 :)
         self.letter_frames = []
@@ -181,9 +203,10 @@ class Game:
         self.letter_animation_timer = 0
         self.letter_animation_speed = 100  
         self.letter_animation_complete = False
+        #set position to the centre of screen for the beautiful letter animation
         if self.letter_frames:
-            self.letter_x = (self.screen_width - self.letter_frames[0].get_width()) // 2
-            self.letter_y = (self.screen_height - self.letter_frames[0].get_height()) // 2
+            self.letter_x = (self.screen_width -self.letter_frames[0].get_width()) // 2
+            self.letter_y = (self.screen_height- self.letter_frames[0].get_height()) // 2
         else:
             self.letter_x = 100
             self.letter_y = 100
@@ -200,98 +223,116 @@ class Game:
     def run(self):
         pygame.init()
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
-        pygame.display.set_caption("Dungeon Escape")
+        pygame.display.set_caption("Dungeon Run")
 
         # settings frustrum culler for oprimisation especially for level 3 where there are many ennemies and 1000+ tiles to render at once
         # basically it only render tiles that are visible within the camera's view instead of rendering the whole surface every frame
         culler = FrustumCuller(self.screen_width, self.screen_height)
-    
+
+        #set healthbar and experience bar to current ones for easy access for future use
         self.current_health_bar = self.health_bar
         self.current_experience_bar = self.experience_bar
         health_bar = self.current_health_bar
         experience_bar = self.current_experience_bar
         health_bar.update(100)  
         experience_bar.update(0)
+
+        #set lighting to 350 radius for better visibility
+        #higher value = more visibile game
         light = Lighting(350)
         
         
-        collision_tiles, spike_tiles = self.reload_collision_data()
-        
-        # Initialize occlusion lighting
-        #occlusion_lighting = OcclusionLighting(collision_tiles)
-
+        collision_tiles, spike_tiles = self.reload_collision_data()        
         endlevel_tiles = self.game_map.endlevel_layer("endlevel")
 
-        gun = Gun(0, 0, "pistol", self.displaySize)
-        knife = Knife(0, 0, "knife", self.displaySize)
-        player_x = self.game_map.width // 2
-        player_y = self.game_map.height // 2
-        self.player = Player(player_x, player_y, 16, 28, (255, 0, 0), self.displaySize)
-    
+        #initialize weapons
+        gun = self.gun
+        knife = self.knife
+        player_x = self.game_map.width// 2
+        player_y = self.game_map.height// 2
+
+        #set player
+        self.player = Player(player_x, player_y, 16,28, (255, 0, 0),self.displaySize)
+
+        #set enemies for the specific level
         self.load_enemies_for_level(self.enemies)
 
-        zoom_level = 13*self.displaySize
+        zoom_level = self.displaySize * 13
         camera = Camera(self.screen_width, self.screen_height, zoom_level)
+
+        #set clock which works as a timer since game was run
         clock = pygame.time.Clock()
+        #clock is updated every frame to keep track of time passed
+        #so that animation and movements are consistent depsite running on slower pc
+        #don't want really fast pc running game twice as fast as slower pc :(
+        
         running = True
         self.particles = []
         
         # Initialize dust particle system for lighting effects
+        #self explanatory but if you increase num_particles you will get more particles but it will run slower
+        #~~(o.o)~~
         self.dust_particles = DustParticleSystem(num_particles=30, light_radius=350)
-        player_center_x = self.player.x + self.player.width / 2
-        player_center_y = self.player.y + self.player.height / 2
+        player_center_x = self.player.x + self.player.width/ 2
+        player_center_y = self.player.y+ self.player.height / 2
         self.dust_particles.initialize(player_center_x, player_center_y)
     
-      
+        # This is used to track when spikes are deactivated so that you can go through it
+        # without getting killed
         self.map_needs_collision_update = False
         self.last_all_levers_pulled = False
 
         # get all chest info into self.chests
         chest_data = self.game_map.chests_layer("chests")
         self.chests = []
+        # add each chest to the chests list
         for chest_info in chest_data:
             chest = Chest(chest_info['x'], chest_info['y'], chest_info['type'])
             self.chests.append(chest)
         #same for levers
         lever_data = self.game_map.lever_layer("levers")
-        self.lever_objects = []  
+        self.lever_list = []  
+        #add all levers to lever list
         for i, lever_info in enumerate(lever_data):
             lever_id = f"lever{i+1}" 
             lever = Lever(lever_info['x'], lever_info['y'], lever_info['type'], lever_id=lever_id)
-            self.lever_objects.append(lever)
+            self.lever_list.append(lever)
 
     
         while running:
             
-            self.current_weapon = self.inventory[self.current_weapon_index]['item']
+            self.current_weapon = self.inventory[self.current_weapon_index]['item'] #fetch current weapon from inventory
             # print(f"x: {self.player.x}, y: {self.player.y}")  # Only for debugging
-            self.life = self.health_bar.life
-            self.experience = self.experience_bar.experience
+            self.life = self.health_bar.life #store life in healthbar class and fetch it here
+            self.experience = self.experience_bar.experience #same but for experience points
 
-            #logic for game over for sound effects and music to terminate when player dead
+            # logic for game over for sound effects and music to terminate when player dead
             if self.life <= 0 and not self.game_over:
                 self.game_over = True
                 if not self.death_sound_played:
                     volume = 0.7 * game_settings.get_sfx_volume()
                     self.player_sounds["death"].set_volume(volume)
-                    self.player_sounds["death"].play()
+                    self.player_sounds["death"].play() #fun song
                     self.death_sound_played = True
-                self.music.play_game_over_music()
+                self.music.play_game_over_music() #get music class to play song when player dies
+            
+            # this controls the framerate of the game, so that it doesn't run too fast on good PCs
             dt = clock.tick(self.FPS)
             
-            if self.player_damage_cooldown > 0:
-                self.player_damage_cooldown -= 1
+            # damage cooldown acts as invincibility so we track how long it lasts and decrement timer
+            if self.player_damage_cooldown > 0: self.player_damage_cooldown -= 1
 
-            if not self.game_over:
-                self.music.update(self.level)
-            if self.current_weapon == "pistol":
-                gun.update(camera, self.player, dt, collision_tiles)
-            elif self.current_weapon == "knife":
-                knife.update(camera, self.player, dt, collision_tiles)
-            
+            if not self.game_over: self.music.update(self.level)
+            if isinstance(self.current_weapon, Gun):
+                self.current_weapon.update(camera, self.player, dt, collision_tiles)
+            elif isinstance(self.current_weapon, Knife):
+                self.current_weapon.update(camera, self.player, dt, collision_tiles)
+            #update weapons based on current weapon selection
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False 
+
+                #self defined events for delayed sounds, looking for range in case... Pretty neat :)
                 elif event.type >= pygame.USEREVENT + 1 and event.type <= pygame.USEREVENT + 10:
                     # Handle delayed XP pling sounds like in minecraft
                     sound_index = event.type - pygame.USEREVENT - 1
@@ -299,48 +340,70 @@ class Game:
                     # play the stored pling sound when player gains xp
                     # it works by playing a random sound from the pling_sounds list and setting a delay
 
+                    #check if sound exists defined earlier for delayed_sound_attr
                     if hasattr(self, delayed_sound_attr):
                         # Play the stored sound
                         stored_sound = getattr(self, delayed_sound_attr)
                         stored_sound.play()
-                        # Clean up the stored sound
+                        # Clean up the stored sound for performance
+                        # otherwise you get memory leaks which is not good :(
                         delattr(self, delayed_sound_attr)
                     else:
-                        # Fallback: select a random pling sound
+                        # In case doesn't exist, select a random pling sound
+                        # a bit slower but better than nothing
                         if self.pling_sounds:
                             pling_sound = random.choice(self.pling_sounds)
+
+                            # generate random number for volume between range for cool minecraft effect
+                            # yes, a lot of this game is inspired by minecraft
+                            # that's because it's a great game.
                             base_volume = random.uniform(0.3, 0.8)
                             final_volume = base_volume * game_settings.get_sfx_volume()
                             pling_sound.set_volume(final_volume)
                             pling_sound.play()
                     
                     # Disable this timer and remove from tracking
+                    #otherwise it will keep triggering every frame
+                    # also better for framerate
                     pygame.time.set_timer(event.type, 0)
                     if event.type in self.xp_sound_events:
                         self.xp_sound_events.remove(event.type)
 
                 # Handle events for game over screen
                 elif self.game_over:
-                    result = self.game_over_screen.handle_events([event])
+                    result = self.game_over_screen.handle_events([ event])
+                    # restart or quit based on user input
                     if result == "restart":
                         self.restart_game()
                     elif result == "quit":
                         running = False
                 elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_z:
+                        print(f"inventory items {self.inventory.items}")
                     if event.key == pygame.K_e:
                         if self.level == 1:
                             # On level 1 there is a chest, if you get close enough a letter should popup when you press e
                             # This is the logic for showing the letter and playing the minecraft chest sound
+                            
+                            # Handles if case where letter is already open and player presses e to close it
                             if self.show_letter:
+                                #game_settings is reponsible for game settings. So we are grabbing SFX volume from there
                                 volume = 0.8 * game_settings.get_sfx_volume()
+                                #play minectaft chest opening sound because it sounds good
                                 self.chest_sounds["close"].set_volume(volume)
                                 self.chest_sounds["close"].play()
                                 self.show_letter = False
+                                # reset animation so animation plays again next time
                                 self.letter_animation_complete = False
                                 self.letter_frame_index = 0
                                 self.letter_animation_timer = 0
+
+                            # handles case where player is near chest and presses e to open it
                             elif self.show_press_e:
+
                                 for chest in self.chests:
+
+                                    #check if near player
                                     if chest.is_near_player(self.player):
                                         self.show_letter = True
                                         volume = 0.8 * game_settings.get_sfx_volume()
@@ -351,51 +414,69 @@ class Game:
                                         self.letter_animation_complete = False
                                         break
                         elif self.level == 2:
-                            # On level 2 the E key is used to interact with levers
+                            #On level 2 the E key is used to interact with levers instead of chest
                             if self.level2.all_levers_pulled:
                                 break
                             else:
-                                for i, lever in enumerate(self.lever_objects):
+                                for i, lever in enumerate(self.lever_list):
                                     # check if lever is near player
                                     if lever.is_near_player(self.player) and not lever.is_pulled:
                                         if lever.pull(): 
-                                            # if lever is pulled increment lever_number and update lever state dict
+                                            # if lever is pulled increment lever_number and update lever state dictionary
                                             lever_number = i + 1
                                             self.levers[lever_number] = True
                                             lever_id = lever.lever_id or f"lever{lever_number}"
                                             # sound logic for lever
                                             if self.level2.pull_lever(lever_id):
+
                                                 self.game_map.update_lever_state(lever_id, True)
                                                 volume = 0.6 * game_settings.get_sfx_volume()
+                                                #play minecraft lever pulled sound
                                                 self.lever_sound.set_volume(volume)
                                                 self.lever_sound.play()  
                                                 #print(f"Pulled {lever_id}")
                                         break
+                    # if number keys are pressed witch to inventory slot
                     if event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8]:
                         self.current_weapon_index = event.key - pygame.K_1
-                    if event.key == pygame.K_e:
+                        #update inventory slot to match current weapon set directly
+                        self.inventory.slot = self.current_weapon_index
+
+                    # press b to open inventory
+                    if event.key == pygame.K_b:
                         self.inventory.active = not self.inventory.active
 
-                    self.current_weapon_index = min(self.current_weapon_index, len(self.inventory)-1)
+                    # cap index so it can't be too high
+                    self.current_weapon_index = min(self.current_weapon_index,len(self.inventory) -1)
+                    # a bit circular but it works; set game class local variable to current weapon from inventory
                     self.current_weapon = self.inventory[self.current_weapon_index]['item']
                     if self.current_weapon:
-                        print(f"Switched to {self.current_weapon}")
+                        print(f"Swiched to{self.current_weapon}")
 
+                #use wheel to witch wepaons in addition to number keys for smoother experience
+                    
                 elif event.type == pygame.MOUSEWHEEL:
-                    if event.y > 0:
+                    
+                    #scroll up and update inventory accordingly
+                    if event.y >0:
                         self.current_weapon_index = (self.current_weapon_index - 1) % len(self.inventory)
-                        print("swithcing weapon down")
-                    elif event.y < 0:
-                        self.current_weapon_index = (self.current_weapon_index + 1) % len(self.inventory)
-                        print("swithcing weapon up")
+                        print("swithcing weapon down, current weapon {}, index{}".format(self.current_weapon, self.current_weapon_index))
+                    #scroll down and update inventory accordingly
+                    elif event.y< 0:
+                        self.current_weapon_index= (self.current_weapon_index + 1) % len(self.inventory)
+                        print("swithcing weapon up, current weapon {}, index{}".format(self.current_weapon,self.current_weapon_index ))
+
+                    #update inventory slot so update animation of selecting slot
                     self.inventory.slot = self.current_weapon_index
 
-                    self.current_weapon = self.inventory[self.current_weapon_index]['item']
+                    self.current_weapon =self.inventory[self.current_weapon_index]['item']
                     if self.current_weapon:
                         print(f"Switched to {self.current_weapon}")
-            self.player.update_animation(dt)
+
+            #update all animations for player and health bar, dt used for consistent timing in miliseconds            
+            self.player.update_animation( dt)
             health_bar.update_animation(dt) 
-            keys = pygame.key.get_pressed()
+            keys =pygame.key.get_pressed()
 
             if not self.show_letter and not self.game_over:
                 self.player.update(keys, collision_tiles, endlevel_tiles, self, spike_tiles)
@@ -417,7 +498,7 @@ class Game:
                             break
                 
                 elif self.level == 2:
-                    for lever in self.lever_objects:
+                    for lever in self.lever_list:
                         if lever.is_near_player(self.player) and not lever.is_pulled:
                             # same as above but for the levers
                             self.show_press_e = True
@@ -426,9 +507,9 @@ class Game:
                 # update enemies every frame
                 for enemy in list(self.enemies):
                     # Pass appropriate weapon data based on current weapon
-                    if self.current_weapon == "pistol":
+                    if self.current_weapon == self.gun:
                         enemy.update(keys, collision_tiles, self.player, self.enemies, self.path_grid, gun.bullets, health_bar, self.particles, self)
-                    elif self.current_weapon == "knife":
+                    elif self.current_weapon == self.knife:
                         # For knife, pass attack info if currently attacking
                         knife_attack = knife.get_attack_rect() if not knife.can_attack else None
                         enemy.update(keys, collision_tiles, self.player, self.enemies, self.path_grid, [], health_bar, self.particles, self, knife_attack, knife.damage if not knife.can_attack else 0)
@@ -438,45 +519,56 @@ class Game:
                     else:
                         enemy.update_animation(dt)
             # update fade overlay for just after level change.
-            # Increase alpha value until it reaches 255
+            # increase alpha value until it reaches 255 which is fully black
             if self.fade_overlay_active:
                 self.fade_overlay_timer += dt
+                #progress of fade based on time passed
                 progress = self.fade_overlay_timer / self.fade_overlay_duration
+
+                # more than 1.0 which means fully loaded
                 if progress >= 1.0:
+                    #disable the fade
                     self.fade_overlay_active = False
                     self.fade_overlay_alpha = 0
                 else:
-                    self.fade_overlay_alpha = int(255 * (1 - progress))
+                    # linearly inrterpolate the value of the alpha based on the progress which makes it smooth
+                    self.fade_overlay_alpha =int(255 *(1 -progress))
 
-            # update letter animation, changing frame
+            # update letter animation changing frame
             if self.show_letter and not self.letter_animation_complete and len(self.letter_frames) > 0:
+                #update the beautiful letter animation frame by frame
                 self.letter_animation_timer += dt
                 if self.letter_animation_timer >= self.letter_animation_speed:
                     self.letter_animation_timer = 0
-                    self.letter_frame_index += 1
+                    self.letter_frame_index += 1 #next frame
                     if self.letter_frame_index >= len(self.letter_frames):
+                        # a bit hacky but it basicialy stops frame from spilling over limit
+                        # and then stops animation completely
                         self.letter_frame_index = len(self.letter_frames) - 1
                         self.letter_animation_complete = True
 
             # update every particle that was spawned when an enemy was killed
-            # Use list comprehension for better performance
-            self.particles = [p for p in self.particles if (p.update(dt), not p.is_dead())[1]]
+            # Use list comprehension for faster performance
+            #better for framerate in long run for many particles
+
+            #basically it updates each particl and filters out dead ones
+            self.particles = [p for p in self.particles if ( p.update(dt), not p.is_dead())[1]]
             
             # Calculate visible tile bounds for culling
             tile_size = self.game_map.tmx_data.tilewidth 
             visible_bounds = culler.get_visible_tile_bounds(camera, tile_size)
             
-            # Render map with culling directly to screen instead of using map_surface
+            # render map with culling directly to screen instead of using map_surface
             self.screen.fill((0, 0, 0))  
             tiles_rendered = self.game_map.render_to_screen(self.screen, camera, visible_bounds)
 
-            # Reset culling stats for this frame if debugging
-            if culler.debug_enabled:
-                culler.culled_count = 0
-                culler.total_count = 0
+            # # Reset culling stats for this frame if debugging
+            # if culler.debug_enabled:
+            #     culler.culled_count = 0
+            #     culler.total_count = 0
 
             
-
+            #draw player
             self.player.draw(self.screen, camera)
 
             # Cull and draw enemies
@@ -496,33 +588,36 @@ class Game:
             # Draw dust particles in the light (before the light overlay)
             self.dust_particles.draw(self.screen, camera)
             
+
+            # draw weapon based on current selection
             light.draw(self.screen, camera)
-            if self.current_weapon == "pistol":
-                gun.draw(self.screen, camera, self.player, dt)
-            elif self.current_weapon == "knife":
-                knife.draw(self.screen, camera, self.player, dt)
-
+            if isinstance(self.current_weapon, Gun):
+                self.current_weapon.draw(self.screen, camera, self.player, dt)
+            elif isinstance(self.current_weapon, Knife):
+                self.current_weapon.draw(self.screen, camera, self.player, dt)
+        
+            # Draw UI
             health_bar.draw(self.screen, self.player, camera)
-            # Draw the experience bar
             self.experience_bar.draw(self.screen)
-
             self.inventory.draw(self.screen, self.player, camera)
 
-            # Draw XP display
-            #xp_text = self.xp_font.render(f"XP: {self.xp}", True, (255, 255, 255))
-            #screen.blit(xp_text, (10, 100))
-
+            #draw press e prompt if near chest or lever
             if self.show_press_e and not self.show_letter:
-                prompt_x = self.screen_width - (1.5 * 240) * self.displaySize
-                prompt_y = self.screen_height - (1.5 * 192) * self.displaySize
+                prompt_x = self.screen_width - (1.5* 240) * self.displaySize
+                prompt_y = self.screen_height -(1.5 * 192) *self.displaySize
                 self.screen.blit(self.press_e_image, (prompt_x, prompt_y))
 
-            if self.show_letter and len(self.letter_frames) > 0:
-                current_frame = self.letter_frames[self.letter_frame_index]
+            #draw current frame of letter animation if letter popup is active
+            
+            if self.show_letter and len(self.letter_frames )> 0:
+                
+                current_frame = self.letter_frames[ self.letter_frame_index ]
                 self.screen.blit(current_frame, (self.letter_x, self.letter_y))
 
+            #draw fade overlay
             if self.fade_overlay_active and self.fade_overlay_alpha > 0:
                 fade_surface = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+
                 fade_surface.fill((0, 0, 0, self.fade_overlay_alpha))
                 self.screen.blit(fade_surface, (0, 0))
 
@@ -530,20 +625,32 @@ class Game:
                 self.game_over_screen.draw(self.screen,self.level)
             # Removed os.system call - major performance bottleneck
             # print(self.FPS)  # Debug only
+
+            #show fps...
             self.show_fps(clock)
-            if self.current_weapon == "pistol": gun.ammo_gui(self.screen, self.screen_width,self.screen_height) 
+            #if gun is selected draw ammo gui on bottom right
+            if isinstance(self.current_weapon, Gun):
+                self.current_weapon.ammo_gui(self.screen, self.screen_width,self.screen_height) 
             pygame.display.flip()
 
+            #lever logic is for level 2 only
             if self.level == 2:
+                #store locally if levers were all pulled previously
                 previous_all_levers_pulled = self.level2.all_levers_pulled
+                
+                #update level 2 logic
                 self.level2.update()
+
+                #update map lever states based on level2 lever states
                 self.game_map.set_all_levers_pulled(self.level2.all_levers_pulled)
                 
                 # Check if lever state changed and update collisions if needed
                 if previous_all_levers_pulled != self.level2.all_levers_pulled:
                     self.map_needs_collision_update = True
                 
+                #check if all levers are pulled now and play spike retraction sound once
                 if not previous_all_levers_pulled and self.level2.all_levers_pulled and not self.spikes_deactivated_sound_played:
+                    
                     volume = 0.7 * game_settings.get_sfx_volume()
                     self.spike_retract.set_volume(volume)
                     self.spike_retract.play()
@@ -553,8 +660,6 @@ class Game:
             if self.map_needs_collision_update:
                 collision_tiles, spike_tiles = self.reload_collision_data()
                 
-                # Update occlusion lighting with new collision data
-                #occlusion_lighting = OcclusionLighting(collision_tiles)
                 
                 # For level 2, handle spike tiles based on lever state
                 if self.level == 2 and hasattr(self, 'level2') and self.level2.all_levers_pulled:
@@ -568,18 +673,18 @@ class Game:
                 endlevel_tiles = self.game_map.endlevel_layer("endlevel")
                 endlevel_tiles = self.game_map.endlevel_layer("endlevel")
 
-
-        #os.system("cls" if os.name == "nt" else "clear")#
             
         pygame.quit()
 
 
     def show_fps(self, clock):
-        # Removed print statement for better performance
+        # Display FPS in the top-right corner
         text = self.fps_text_font.render(str(round(clock.get_fps(),2)), True, (255,255,255))
         self.screen.blit(text, (self.screen_width - 100, 50))
 
     def next_level(self):
+        # Clean up current level entities
+
         self.enemies.clear()
         self.particles.clear()
         self.player.x , self.player.y = level_data[f"level{self.level}"]["start_pos"]
@@ -590,6 +695,7 @@ class Game:
         
         self.camera.width = self.screen_width
         self.camera.height = self.screen_height
+        #transition to next level
         self.level_transition()
 
 
@@ -674,17 +780,16 @@ class Game:
             self.game_map.set_all_levers_pulled(False)  
             self.spikes_deactivated_sound_played = False  
             lever_data = self.game_map.lever_layer("levers")
-            self.lever_objects = []
+            self.lever_list = []
             for i, lever_info in enumerate(lever_data):
                 lever_id = f"lever{i+1}"
                 lever = Lever(lever_info['x'], lever_info['y'], lever_info['type'], lever_id=lever_id)
-                self.lever_objects.append(lever)
+                self.lever_list.append(lever)
 
         self.lightlevel = level_data[f"level{self.level}"]["lighting"]
 
     def reload_collision_data(self):
-        """Reload collision data for the current level and invalidate path grid cache"""
-        self.path_grid_cache = None  # Invalidate cache
+        self.path_grid_cache = None 
         try:
             collision_tiles = self.game_map.collision_layer(["wall lining", "wall lining 2"])
             spike_tiles = self.game_map.collision_layer(["spikes"])
@@ -694,12 +799,12 @@ class Game:
                 collision_tiles = self.game_map.collision_layer(["wall lining", "wall lining2"])
                 spike_tiles = self.game_map.collision_layer(["spikes"])
                 return collision_tiles, spike_tiles
-            except Exception as e2:
+            except Exception as e_2:
                 try:
                     collision_tiles = self.game_map.collision_layer(["walllining1", "walllining2"])
                     spike_tiles = self.game_map.collision_layer(["spikes"])
                     return collision_tiles, spike_tiles
-                except Exception as e3:
+                except Exception as e_3:
                     collision_tiles = self.game_map.collision_layer(["wall lining"])
                     spike_tiles = []
                     return collision_tiles, spike_tiles
@@ -851,7 +956,7 @@ class Game:
         self.level2 = level2()
         self.levers = {1: False, 2: False, 3: False, 4: False} 
         self.game_map.set_all_levers_pulled(False)
-        self.lever_objects = []  # Clear lever objects
+        self.lever_list = []  # Clear lever objects
         
         # Reset player position
         self.player.x, self.player.y = level_data[f"level{self.level}"]["start_pos"]

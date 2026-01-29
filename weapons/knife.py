@@ -102,45 +102,32 @@ class Knife(Items):
             self.angle = math.atan2(mouse_y - self.y, mouse_x - self.x)
 
     def draw(self, surface, camera=None, player=None, dt=0):
-        if player: 
+        if player:
             pivot_x = player.x + player.width / 2
             pivot_y = player.y + player.height / 2 + self.y_offset
-            
+
             self.x = pivot_x + math.cos(self.angle) * self.orbit_distance
             self.y = pivot_y + math.sin(self.angle) * self.orbit_distance
-        
-        # Draw slash particles
-        if camera:
-            for particle in self.slash_particles:
-                screen_x = particle['x'] * camera.zoom + camera.offset_x
-                screen_y = particle['y'] * camera.zoom + camera.offset_y
-                alpha = int(255 * (particle['life'] / 0.2))
-                size = max(1, int(particle['size'] * camera.zoom * (particle['life'] / 0.2)))
-                
-                # Draw white slash particle
-                if alpha > 0:
-                    pygame.draw.circle(surface, (255, 255, 255), (int(screen_x), int(screen_y)), size)
-        
+
         knife_image = self.image
-        
+
         if self.pointing_left:
             knife_image = pygame.transform.flip(knife_image, False, True)
-        
-        # Apply slash rotation during attack
+
         total_rotation = self.angle + self.slash_rotation
         rotated_image = pygame.transform.rotate(knife_image, -math.degrees(total_rotation))
         rotated_rect = rotated_image.get_rect()
-        
+
         if camera:
             draw_x = self.x * camera.zoom + camera.offset_x
             draw_y = self.y * camera.zoom + camera.offset_y
-            
+
             rotated_rect.center = (draw_x, draw_y)
-            
+
             surface.blit(rotated_image, rotated_rect)
         else:
             rotated_rect.center = (self.x, self.y)
-            
+
             surface.blit(rotated_image, rotated_rect)
         
         # Handle knife attack on mouse click

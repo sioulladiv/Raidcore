@@ -6,7 +6,7 @@ class inventory:
         self.y = 0
         self.image = f"Dungeon/frames/inventory.png"
         self.devmode = False
-        self.slot = 2
+        self.slot = 0
         self.images = []
 
         for i in range(8):
@@ -22,11 +22,13 @@ class inventory:
         return len(self.items)
 
     def __getitem__(self, index):
-        return self.items[index]
+        item = self.items[index]
+        return item
 
     def add_item(self, item, slot):
         if 0 <= slot < len(self.items):
             self.items[slot]['item'] = item
+        
 
     def drop_item(self, slot):
         if 0 <= slot < len(self.items):
@@ -77,8 +79,3 @@ class inventory:
                     gy = int(y + row * cell_h)
                     pygame.draw.line(screen, grid_color, (x, gy), (x + scaled_width, gy), 2)
 
-invent = inventory()
-invent.add_item("Sword", 0)
-invent.add_item("Shield", 1)
-
-print(invent)
