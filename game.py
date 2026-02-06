@@ -22,6 +22,8 @@ from utils.culling import FrustumCuller
 from config.game_settings import game_settings
 from weapons.knife import Knife
 from ui.inventory import inventory
+from ui.menu import BunkerMenu
+
 
 import json
 import os
@@ -375,11 +377,14 @@ class Game:
                     # restart or quit based on user input
                     if result == "restart":
                         self.restart_game()
+
                     elif result == "quit":
                         running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_z:
                         print(f"inventory items {self.inventory.items}")
+                    if event.key == pygame.K_ESCAPE:
+                        return True
                     if event.key == pygame.K_e:
                         if self.level == 1:
                             # On level 1 there is a chest, if you get close enough a letter should popup when you press e
@@ -673,8 +678,9 @@ class Game:
                 endlevel_tiles = self.game_map.endlevel_layer("endlevel")
                 endlevel_tiles = self.game_map.endlevel_layer("endlevel")
 
-            
+           
         pygame.quit()
+        return False
 
 
     def show_fps(self, clock):
