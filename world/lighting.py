@@ -1,67 +1,110 @@
+"""Dynamic torch-light effect with warm colour gradient."""
+from __future__ import annotations
+
 import pygame
-import random
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from entities.player import Player
+    from world.camera import Camera
+
 
 class Lighting:
-    def __init__(self, radius, darkness=210):
+    """
+    Renders a radial vignette affect around the player to simulate torch light.
+
+    A warm gradient surface is blended over a dark overlay each frame.
+    The gradient is only regenerated when darkness changes.
+    """
+    def __init__(self, radius: int, darkness: int = 210) -> None:
+        """
+        Create Lighting instance.
+
+        Args:
+            radius: Initial light radius in world pixels.
+            darkness: Alpha value of the dark overlay (0–255)
+                make the unlit areas darker (default 210).
+        """
         self.radius = radius
+
         self.darkness = darkness
         self.last_darkness = darkness
         
-        # Flickering effect
-        self.flicker_time = 0
-        self.flicker_intensity = 0
-        self.base_radius = radius
-        
         # Cache the light gradient surface
         self.surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+        
         self._regenerate_light_surface()
+        
         
         # Pre-create dark overlay surface to reuse
         self.dark_overlay = None
+
         self.last_screen_size = (0, 0)
 
-    def _regenerate_light_surface(self):
-        """Regenerate the light gradient surface (only when darkness changes)"""
-        self.surface.fill((0, 0, 0, 0))  # Clear surface
-        for r in range(self.radius):
-            # Quadratic falloff for smoother, more realistic gradient
-            alpha = int(((r / self.radius) ** 2) * self.darkness)
-            
-            # Warm torch color (orange/yellow) with gradient from bright center to edge
-            ratio = r / self.radius
-            red = int(255 * (1 - ratio * 0.2))  # Stays bright
-            green = int(200 - ratio * 50)  # Moderate, fades
-            blue = int(100 - ratio * 80)  # Low, creates warm tone
-            
-            pygame.draw.circle(self.surface, (red, green, blue, alpha), (self.radius, self.radius), self.radius - r)
+    def _regenerate_light_surface(self) -> None:
+        """Regenerate the light gradient surface."""
+        import pygame.surfarray as surfarray
+        
+        self.surface.fill((0, 0, 0, 0))
+        
+        # Get pixel arrays for direct manipulation which is faster than drawing
+        pixels = surfarray.pixels3d(self.surface)
+        alphas = surfarray.pixels_alpha(self.surface)
+        
+        center = self.radius
+        
+        for y in range(self.radius* 2):
+            for x in range(self.radius* 2):
+                dx = x - center
+                dy = y - center
+                dist = (dx*dx + dy*dy)**0.5
+                
+                if dist <= self.radius:
+                    ratio = dist / self.radius  # 0 at center 1 at edge
+                    
+                    # Quadratic falloff for smooth gradient                       
+                    
+                    pixels[x, y, 0] = int(255*(1-ratio*0.2))
+                    pixels[x, y, 1] = int(200 - ratio * 50)
+                    pixels[x, y, 2] = int(100 - ratio * 80)
+                    alphas[x, y] = int(( (1 - ratio)**2)*self.darkness)
 
-    def update(self, player, camera, darkness=210):
-        # Flickering effect - subtle random variation
-        self.flicker_time += 0.1
-        self.flicker_intensity = random.uniform(-2, 3)  # Slight positive bias for more brightness
-        
-        # Apply flicker to radius
-        flickered_radius = int(self.base_radius + self.flicker_intensity + 
-                              pygame.math.Vector2(1, 0).rotate_rad(self.flicker_time * 0.5).x * 1.5)
-        
-        # Only regenerate if darkness or radius changed significantly
-        if self.darkness != darkness or abs(self.radius - flickered_radius) > 0:
-            self.radius = flickered_radius
+    def update(self, player: Player, camera: Camera, darkness: int = 210) -> None:
+        """
+        Recompute the light position each frame.
+
+        Args:
+            player: Player entity whose centre is used as the light source.
+            camera: Active camera for world–to–screen projection.
+            darkness: Target darkness override (default 210).
+
+        """
+        # Only regenerate if darkness changed
+
+        if self.darkness!=darkness:
             self.darkness = darkness
             
             # Recreate surface if size changed
-            if self.surface.get_width() != self.radius * 2:
-                self.surface = pygame.Surface((self.radius * 2, self.radius * 2), pygame.SRCALPHA)
-            
+            if self.surface.get_width() != self.radius*2:
+                self.surface = pygame.Surface((self.radius*2, self.radius*2), pygame.SRCALPHA)
             self._regenerate_light_surface()
 
-        player_center_x = player.x + (player.width / 2)
-        player_center_y = player.y + (player.height / 2)
+
+
+        player_center_x= player.x+ (player.width/2)
+        player_center_y= player.y +(player.height/2)
         
-        self.x = player_center_x * camera.zoom + camera.offset_x
-        self.y = player_center_y * camera.zoom + camera.offset_y
+        self.x = player_center_x*camera.zoom + camera.offset_x
+        self.y = player_center_y*camera.zoom + camera.offset_y
         
-    def draw(self, surface, camera):
+    def draw(self, surface: pygame.Surface, camera: Camera) -> None:
+        """
+        Blit the dark overlay (with the light hole cut out) onto surface.
+
+        Args:
+            surface: main display surface
+            camera: Active camera
+        """
         screen_size = (surface.get_width(), surface.get_height())
         
         # Only recreate dark_overlay if screen size changed
@@ -69,7 +112,7 @@ class Lighting:
             self.dark_overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
             self.last_screen_size = screen_size
         
-        # Reuse the surface instead of creating new one
+        #reuse the surface instead of creating new one
         self.dark_overlay.fill((0, 0, 0, self.darkness))
         
         center_x = self.x

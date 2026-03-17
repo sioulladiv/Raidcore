@@ -1,54 +1,16 @@
 import pygame
 
-"""
-Frustum Culling Implementation for Dungeon Escape Game
-
-This module implements frustum culling to optimize rendering performance by only drawing 
-objects that are visible within the camera's view. This can significantly improve performance
-especially on large maps with many entities.
-
-Key features:
-- Tile culling: Only renders tiles visible on screen
-- Entity culling: Only draws enemies, particles, and bullets within screen bounds
-- Maintains pathfinding: Enemy pathfinding grid is unaffected by rendering optimizations
-- Debug support: Optional performance statistics to measure culling effectiveness
-
-Performance improvements:
-- Reduces number of draw calls
-- Decreases memory bandwidth usage
-- Improves frame rate on large scenes
-- Scales better with map size and entity count
-"""
-
 class FrustumCuller:
     """
     Handles frustum culling for the game to optimize rendering performance.
     Only renders objects that are visible within the camera's view.
     """
     
-    def __init__(self, screen_width, screen_height):
+    def __init__(self, screen_width: int, screen_height: int) -> None:
         self.screen_width = screen_width
         self.screen_height = screen_height
-        # Debug statistics
-        self.debug_enabled = False
-        self.culled_count = 0
-        self.total_count = 0
-    
-    def enable_debug(self, enabled=True):
-        """Enable debug statistics for culling performance."""
-        self.debug_enabled = enabled
-        if enabled:
-            self.culled_count = 0
-            self.total_count = 0
-    
-    def get_debug_stats(self):
-        """Get debug statistics."""
-        if self.total_count > 0:
-            cull_percentage = (self.culled_count / self.total_count) * 100
-            return f"Culled: {self.culled_count}/{self.total_count} ({cull_percentage:.1f}%)"
-        return "No culling data"
-    
-    def is_rect_visible(self, rect, camera):
+
+    def is_rect_visible(self, rect: pygame.Rect, camera: object) -> bool:
         """
         Check if a rectangle is visible within the camera's view.
         
@@ -71,7 +33,7 @@ class FrustumCuller:
                 screen_y + screen_height >= 0 and 
                 screen_y <= self.screen_height)
     
-    def is_point_visible(self, x, y, camera, margin=0):
+    def is_point_visible(self, x: float, y: float, camera: object, margin: float = 0) -> bool:
         """
         Check if a point is visible within the camera's view with optional margin.
         
@@ -83,15 +45,18 @@ class FrustumCuller:
         Returns:
             bool: True if the point is visible, False otherwise
         """
+
+        # Transform world coordinates to screen coordinates
         screen_x = x * camera.zoom + camera.offset_x
         screen_y = y * camera.zoom + camera.offset_y
         
+        # Check if the point is within the screen bounds plus margin
         return (screen_x >= -margin and 
                 screen_x <= self.screen_width + margin and
                 screen_y >= -margin and 
                 screen_y <= self.screen_height + margin)
     
-    def is_entity_visible(self, entity, camera, margin=50):
+    def is_entity_visible(self, entity: object, camera: object, margin: float = 50) -> bool:
         """
         Check if an entity is visible within the camera's view.
         
@@ -117,7 +82,7 @@ class FrustumCuller:
                 screen_y + screen_height >= -margin and 
                 screen_y <= self.screen_height + margin)
     
-    def get_visible_tile_bounds(self, camera, tile_size):
+    def get_visible_tile_bounds(self, camera: object, tile_size: int) -> tuple[int, int, int, int]:
         """
         Calculate which tiles are visible based on camera position and zoom.
         
@@ -143,7 +108,7 @@ class FrustumCuller:
         
         return start_x, start_y, end_x, end_y
     
-    def filter_visible_entities(self, entities, camera, margin=50):
+    def filter_visible_entities(self, entities: list, camera: object, margin: float = 50) -> list:
         """
         Filter a list of entities to only include visible ones.
         
@@ -157,12 +122,7 @@ class FrustumCuller:
         """
         visible_entities = []
         for entity in entities:
-            if self.debug_enabled:
-                self.total_count += 1
-            
             if self.is_entity_visible(entity, camera, margin):
                 visible_entities.append(entity)
-            elif self.debug_enabled:
-                self.culled_count += 1
                 
         return visible_entities

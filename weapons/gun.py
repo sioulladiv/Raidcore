@@ -1,41 +1,74 @@
+"""Pistol weapon: shooting, bullet management and ammo HUD."""
+from __future__ import annotations
+
 from weapons.item import Items
 import pygame
 import math
 from weapons.bullet import Bullet
 from utils.culling import FrustumCuller
 import random
+from typing import TYPE_CHECKING
 from config.game_settings import game_settings
+
+if TYPE_CHECKING:
+    from world.camera import Camera
+    from entities.player import Player
+
 pygame.mixer.init()
 
 
+class Gun(Items):
+    """
+    Pistol that fires :class:`~weapons.bullet.Bullet` projectiles.
 
-class Gun(Items): 
-    def __init__(self, x, y, type, displaySize, height=9, width=10): 
-        # Use per-weapon base size; pistol is small (10x6) and gets a scale boost
+    Orbits the player sprite, rotates towards the mouse cursor, and spawns
+    bullets on left-click subject to a firing-rate cooldown.
+    """
+    def __init__(self, x: float, y: float, type: str, displaySize: float, height: int =9, width: int =10) -> None:
+        """
+        Create a Gun and load its sprite and sound assets.
+
+        Args:
+            x: Initial world x-coordinate.
+            y: Initial world y-coordinate.
+            type: Weapon type identifier (currently only ``'pistol'``
+                is supported).
+            displaySize: Scaling ratio (screen_width / 2560).
+            height: Base sprite height before scaling (default 9).
+            width: Base sprite width before scaling (default 10).
+        """
+        # Use per-weapon base size; pistol is small 10x6 and gets a scale boost
         base_width, base_height = width, height
-        scale_factor = 10 if type == "pistol" else 1
+        if type == "pistol": cale_factor = 10
+        else: cale_factor = 1
 
         super().__init__(x, y, type, base_height, base_width)
-        self.width = base_width * displaySize * scale_factor
-        self.height = base_height * displaySize * scale_factor
+        self.width = base_width*displaySize* cale_factor
+        self.height = base_height*displaySize*cale_factor
         self.displaySize = displaySize
+
         self.type = type
+
         self.ammo = 0
+
         self.max_ammo = 100
         self.shoot_speed = 1.5
         self.shoot_timer = 0
         self.bullet_speed = 10
         self.bullet_damage = 1
-        self.bullet_radius = 5 * self.displaySize
+
+        self.bullet_radius = 5*self.displaySize
         self.angle = 0
-        self.y_offset = 6 * self.displaySize
-        self.orbit_distance = 5 * self.displaySize
+
+        self.y_offset = 6*self.displaySize
+        self.orbit_distance = 5*self.displaySize
         self.angle_offset = 0
 
         self.bullets = []
-        self.can_shoot = True
 
+        self.can_shoot = True
         self.fps_text_font = pygame.font.SysFont("Verdana", 50)
+
         self.ammo_image = pygame.image.load("./Dungeon/frames/ammo.png")
 
 
@@ -46,38 +79,60 @@ class Gun(Items):
             print("Warning: Could not load gunshot sound file")
             self.gunshot_sound = None
 
+        # For future will add other guns with different properties so machine gun with faster bullets
+        
         if self.type == "pistol":
             self.ammo = self.max_ammo
             self.max_ammo = 10
             self.shoot_speed = 0.5
             self.bullet_speed = 5  
             self.bullet_damage = 1 
-            self.bullet_radius = max(0.5, self.displaySize * 0.8)  # Smaller radius for better collision
+            self.bullet_radius = max(0.5, self.displaySize*0.8) 
+
             self.image = pygame.image.load("./Dungeon/frames/pistol.png")
             self.image = pygame.transform.scale(self.image, (self.width, self.height))
     
-    def update(self, camera=None, player=None, dt=0, collision_tiles=None):
+    def update(self, camera: Camera |  None=None,player:Player | None = None, dt: float = 0, collision_tiles: list[pygame.Rect] | None = None) -> None:
+        """
+        Update gun angle, firing cooldown, and cull off-screen bullets.
+
+        Args:
+            camera: Active camera for world–to–mouse coordinate conversion.
+            player: Player entity used to anchor the gun's orbit position.
+            dt: Delta time in milliseconds.
+            collision_tiles: Wall rects passed to each bullet for collision.
+        """
         if not hasattr(self, 'pointing_left'):
             self.pointing_left = False
         
+
         if self.shoot_timer > 0:
+
             self.shoot_timer -= dt / 1000.0 
             self.can_shoot = False
         else:
+
             self.can_shoot = True
             
         if camera and player:
-            mouse_x, mouse_y = pygame.mouse.get_pos()
-            player_center_x = player.x + player.width / 2
-            player_center_y = player.y + player.height / 2 + self.y_offset
-            world_mouse_x = (mouse_x - camera.offset_x) / camera.zoom
-            world_mouse_y = (mouse_y - camera.offset_y) / camera.zoom
-            base_angle = math.atan2(world_mouse_y - player_center_y, world_mouse_x - player_center_x)
+            mouse_x, mouse_y= pygame.mouse.get_pos()
+            player_center_x= player.x + player.width / 2
+            player_center_y= player.y + player.height / 2 +self.y_offset
+
+            # convert mouse to world coord for accurate angle calculation
+            worldmouse_x= (mouse_x-camera.offset_x) / camera.zoom
+            worldmouse_y= (mouse_y-camera.offset_y) / camera.zoom
+            # Get angle to mouse
+            base_angle= math.atan2(worldmouse_y - player_center_y, worldmouse_x - player_center_x)
             
+            # Flip gun sprite if aiming left to prevent upside-down rendering
             if self.pointing_left and (base_angle < math.pi/2 - 0.1 and base_angle > -math.pi/2 + 0.1):
                 self.pointing_left = False
             elif not self.pointing_left and (base_angle > math.pi/2 + 0.1 or base_angle < -math.pi/2 - 0.1):
                 self.pointing_left = True
+
+
+
             if self.pointing_left:
                 self.angle = base_angle  - self.angle_offset
             else:
@@ -95,6 +150,7 @@ class Gun(Items):
 
         # Optimize bullet update with list comprehension
         if camera:
+
             margin = 300
             screen_width = pygame.display.get_surface().get_width()
             screen_height = pygame.display.get_surface().get_height()
@@ -116,7 +172,15 @@ class Gun(Items):
         else:
             self.bullets = [b for b in self.bullets if (b.update(dt, collision_tiles), not b.is_completely_dead())[1]]
 
-    def draw(self, surface, camera=None, player=None, dt=0):
+    def draw(self, surface: pygame.Surface, camera: Camera | None = None, player: Player | None = None, dt: float = 0) -> None:
+        """Render the gun sprite and spawn / draw bullets.
+
+        Args:
+            surface: Pygame surface to draw onto.
+            camera: Active camera for coordinate transformations.
+            player: Player entity used to anchor the gun.
+            dt: Delta time in milliseconds (forwarded to bullet draw).
+        """
         if player:
             pivot_x = player.x + player.width / 2
             pivot_y = player.y + player.height / 2 + self.y_offset
@@ -155,8 +219,8 @@ class Gun(Items):
                     self.gunshot_sound.play()
 
                 mouse_x, mouse_y = pygame.mouse.get_pos()
-                world_mouse_x = (mouse_x - camera.offset_x) / camera.zoom
-                world_mouse_y = (mouse_y - camera.offset_y) / camera.zoom
+                worldmouse_x = (mouse_x - camera.offset_x) / camera.zoom
+                worldmouse_y = (mouse_y - camera.offset_y) / camera.zoom
 
                 if self.pointing_left:
                     self.bullet_angle = self.angle + self.angle_offset
@@ -166,7 +230,7 @@ class Gun(Items):
                 barrel_x = self.x + math.cos(self.bullet_angle) * (barrel_length-6)
                 barrel_y = self.y + math.sin(self.bullet_angle) * (barrel_length-6)
 
-                bullet_angle = math.atan2(world_mouse_y - barrel_y, world_mouse_x - barrel_x)
+                bullet_angle = math.atan2(worldmouse_y - barrel_y, worldmouse_x - barrel_x)
                 bullet = Bullet(
                     barrel_x,
                     barrel_y,
@@ -195,7 +259,15 @@ class Gun(Items):
             else:
                 bullet.draw(surface, camera)
 
-    def ammo_gui(self, screen, screen_width, screen_height):
+    def ammo_gui(self, screen: pygame.Surface, screen_width: int, screen_height: int) -> None:
+        """
+        Draw the ammo counter HUD in the bottom-left corner.
+
+        Args:
+            screen: The main display surface.
+            screen_width: Current screen width in pixels.
+            screen_height: Current screen height in pixels.
+        """
         text = self.fps_text_font.render(f" x{int(self.ammo)}", True, (255,255,255))
 
         ammo_image_scaled = pygame.transform.scale(self.ammo_image, (80, 80))

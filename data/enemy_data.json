@@ -1,9 +1,9 @@
 {
     "chort": {
         "lives": 3,
-        "speed": 1.5,
+        "speed": 2,
         "damage": 1,
-        "detection_range": 300,
+        "detection_range": 500,
         "attack_cooldown": 500,
         "colour": [206,69,63],
         "width": 16,
@@ -31,7 +31,7 @@
             ]
         },
         "sound": {
-            "attack": ["./Assets/Sounds/Chort/chort1.mp3", "./Assets/Sounds/Chort/chort2.mp3","./Assets/Sounds/Chort/chort3.mp3"],
+            "attack": ["./Assets/Sounds/Chort/chort1.mp3"],
             "hurt": ["./Assets/Sounds/Chort/chort_hurt.mp3"],
             "death": ["./Assets/Sounds/Chort/chort_death.mp3"]
         }

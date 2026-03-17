@@ -1,6 +1,6 @@
 {
     "master_volume": 0,
     "music_volume": 0,
-    "sfx_volume": 100,
+    "sfx_volume": 0,
     "fps_cap": 60
 }

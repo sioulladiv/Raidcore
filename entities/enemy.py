@@ -1,21 +1,50 @@
+"""Enemy entity: AI movement, pathfinding, combat and animation."""
+from __future__ import annotations
+
 import random
 import pygame
+from typing import TYPE_CHECKING
 from entities.particle import Particle
-from pathfinding.core.grid import Grid
-from pathfinding.finder.a_star import AStarFinder
-from pathfinding.core.diagonal_movement import DiagonalMovement
+from utils.pathfinding import Pathfind
 from config.game_settings import game_settings
 import os
 
+if TYPE_CHECKING:
+    from entities.player import Player
+    from world.camera import Camera
+    from ui.health_bar import HealthBar
+    from game import Game
+
 tile_size = 16
 
+
 class Enemy:
-    def __init__(self, x, y, Ennemytype='chort', data=None):
-        pygame.mixer.init()
+    """An enemy character with autonomous AI behaviour.
+
+    Movement is driven by an A* pathfinder when the player is within detection
+    range.  The enemy resolves collisions with walls and other enemies and
+    inflicts/receives damage through bullet or knife hit-testing each frame.
+    """
+    def __init__(self, x: float, y: float, Ennemytype: str = 'chort', data: dict | None = None) -> None:
+        """Create an enemy from its JSON data dictionary.
+
+        Args:
+            x: World x spawn coordinate.
+            y: World y spawn coordinate.
+            Ennemytype: String key matching an entry in ``enemy_data.json``
+                (e.g. ``'chort'``, ``'goblin'``).
+            data: Parsed dictionary from ``enemy_data.json`` for this enemy
+                type.  Must contain at least ``width``, ``height``,
+                ``speed``, ``lives``, ``damage``, ``detection_range``,
+                ``animations``, ``frame_path``, ``colour`` and ``sound``.
+        """
         self.x = x
         self.y = y
         self.width = data["width"]
         self.height = data["height"]
+
+        # Randomize speed slightly for natural variation between enemies of the same type
+        #so they don't all move in perfect unison
         self.speed = data["speed"] * random.uniform(0.8, 1.2) * 0.5 
         self.og_speed = self.speed
         self.lives = data["lives"]
@@ -44,6 +73,8 @@ class Enemy:
 
         self.sound_timer = random.uniform(0,200)
 
+
+        # Load animation frames based on provided data
         self.current_frame = 0
         self.animation_timer = 0
         self.animation_speed = data["animations"]["idle"]["frames"] * 20
@@ -55,13 +86,15 @@ class Enemy:
         self.collision_offset_y = self.height - self.collision_height - 2
         self.colour = data["colour"]
 
-    
+
+        # get frames for animation when idel from json file
         self.idle_frames = []
         for i in range(data["animations"]["idle"]["frames"]):
             img = pygame.image.load(f"{data['frame_path']}_idle_anim_f{i}.png")
             img = pygame.transform.scale(img, (self.width, self.height))
             self.idle_frames.append(img)
 
+        # Get frames for animation when moving running or walking from json file
         self.walk_frames = []
         for i in range(data["animations"]["run"]["frames"]):
             img = pygame.image.load(f"{data['frame_path']}_run_anim_f{i}.png")
@@ -71,8 +104,9 @@ class Enemy:
         self.last_player_x = 0
         self.last_player_y = 0
         self.player_moved_threshold = 32  
-        self.direct_movement_distance = 40 
+        self.direct_movement_distance = 10 
 
+        # Load sounds based on provided data
         self.sounds = data["sound"]
         self.sound_objects = {}
         
@@ -87,7 +121,7 @@ class Enemy:
                             sound.set_volume(random.uniform(0.4, 0.7))
                             sound_list.append(sound)
                         except pygame.error:
-                            print(f"Warning: Could not load sound file {sound_path}")
+                            print(f"could not load sound file{sound_path}")
                 self.sound_objects[sound_name] = sound_list if sound_list else None
             else:
                 # Single sound file
@@ -97,26 +131,37 @@ class Enemy:
                         sound.set_volume(random.uniform(0.4, 0.7))
                         self.sound_objects[sound_name] = [sound]
                     except pygame.error:
-                        print(f"Warning: Could not load sound file {sound_file}")
+                        print(f"could not load sound file{sound_file}")
                         self.sound_objects[sound_name] = None
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Clean up resources when enemy is removed"""
+        #prevents memory leaks which I have had issues with before
         # Stop any playing sounds
         for sound_name, sound_list in self.sound_objects.items():
             if isinstance(sound_list, list):
+
                 for sound in sound_list:
                     if sound:
                         sound.stop()
-            elif sound_list:
-                sound_list.stop()
+            elif sound_list: sound_list.stop()
         
         # Clear references
         self.sound_objects.clear()
         self.idle_frames.clear()
+
         self.walk_frames.clear()
     
-    def get_rect(self, x, y):
+    def get_rect(self, x: float, y: float) -> pygame.Rect:
+        """Return the enemy's collision rectangle at position (x, y).
+
+        Args:
+            x: World x-coordinate to use.
+            y: World y-coordinate to use.
+
+        Returns:
+            ``pygame.Rect`` for the enemy's collision bounds.
+        """
         #return pygame rect of enemy
         return pygame.Rect(
             x + self.collision_offset_x,
@@ -125,14 +170,52 @@ class Enemy:
             self.collision_height
         )
 
-    def get_distance_to_player(self, player):
+    def get_distance_to_player(self, player: Player) -> float:
+        """Return the Euclidean distance from this enemy to the player.
+
+        Args:
+            player: The player entity.
+
+        Returns:
+            Distance in world pixels.
+        """
         return ((player.x - self.x) ** 2 + (player.y - self.y) ** 2) ** 0.5
 
-    def update(self, keys, tiles, player, enemies, collision_grid, bullets=None, health_bar=None, particles=None, game=None, knife_attack=None, knife_damage=0): 
+    def update(
+self,
+keys: pygame.key.ScancodeWrapper,
+tiles: list[pygame.Rect],
+player: Player,
+enemies: list[Enemy],
+collision_grid: list[list[int]],
+bullets: list | None = None,
+health_bar: HealthBar | None = None,
+particles: list | None = None,
+game: Game | None = None,
+knife_attack: pygame.Rect | None = None,
+knife_damage: float = 0,
+    ) -> None:
+        """Run one frame of enemy AI, collision and combat logic.
+
+        Args:
+            keys: Current keyboard state (unused by enemy but kept for
+                signature parity).
+            tiles: Wall collision rectangles for AABB(Axis-Aligned Bounding Box collision handling) resolution.
+            player: The player entity.
+            enemies: List of all active enemies (used for enemy–enemy push).
+            collision_grid: 2-D grid where 1 = walkable, 0 = blocked,
+                used by the pathfinder.
+            bullets: Active bullet objects to test for hits.
+            health_bar: Player's health bar; receives damage on contact.
+            particles: Particle list to append death effects to.
+            game: Game instance for XP collection callbacks.
+            knife_attack: Hitbox rect of an active knife swing, or ``None``.
+            knife_damage: Damage dealt by a knife swing (0 when not attacking).
+        """
         self.path_find_timer += 1
         distance_to_player = self.get_distance_to_player(player)
 
-        if hasattr(self, 'collision_slowdown_timer') and self.collision_slowdown_timer > 0:
+        if hasattr(self, 'collision_slowdown_timer') and self.collision_slowdown_timer  > 0:
             self.collision_slowdown_timer -= 1
             if self.collision_slowdown_timer <= 0:
                 self.speed = self.original_speed
@@ -143,12 +226,12 @@ class Enemy:
 
         desired_velocity_x = 0.0
         desired_velocity_y = 0.0
-        
         if distance_to_player < self.detection_range:
-            player_moved_distance = ((player.x - self.last_player_x) ** 2 + (player.y - self.last_player_y) ** 2) ** 0.5
+            player_moved_distance = ((player.x - self.last_player_x)**2 + (player.y - self.last_player_y)**2)**0.5
             
             should_update_path = (
-                self.path_find_timer % 45 == 0 or  # Optimized from 30 to 45 for better performance
+                #increase for more frequent pathfinding, decrease for less but more efficient pathfinding
+                self.path_find_timer % 45 == 0 or 
                 player_moved_distance > self.player_moved_threshold or  
                 not self.path or len(self.path) == 0  
             )
@@ -174,37 +257,44 @@ class Enemy:
                 # Removed debug prints for performance
                 
             else:
-                
+                # Follow path if it exists and is valid
                 if hasattr(self, 'path') and self.path and len(self.path) > 0:
                     # Removed debug prints for performance
                     if self.path_arr_index >= len(self.path):
                         self.path_arr_index = len(self.path) - 1
                     
+                    # If we've reached the current target tile, move to the next one
                     if self.path_arr_index < len(self.path):
                         tile_x, tile_y = self.path[self.path_arr_index]
                         target_x = tile_x * tile_size + tile_size // 2
                         target_y = tile_y * tile_size + tile_size // 2
-
+                        #calculate direction vector towards current target tile
                         direction_x = target_x - (self.x + self.width // 2) 
                         direction_y = target_y - (self.y + self.height // 2)
 
-                        if (direction_x) ** 2 + (direction_y) ** 2 < 18:  
+                        #if close enough to the target tilethen switch to the next one in the path
+                        if (direction_x) *2 + (direction_y)**2 < 18: 
+                            #as shown in design section values might be different in example 18 represents a bit more than one tile
                             self.path_arr_index += 1
                             if self.path_arr_index >= len(self.path):
                                 direction_x = (player.x + player.width // 2) - (self.x + self.width // 2)
                                 direction_y = (player.y + player.height // 2) - (self.y + self.height // 2)
                             else:
+                                #calculate direction towards next tile in path
                                 tile_x, tile_y = self.path[self.path_arr_index]
-                                target_x = tile_x * tile_size + tile_size // 2
-                                target_y = tile_y * tile_size + tile_size // 2
+                                target_x = tile_x*tile_size + tile_size //2
+                                target_y = tile_y* tile_size +tile_size //2
                                 direction_x = target_x - (self.x + self.width // 2) 
                                 direction_y = target_y - (self.y + self.height // 2)
 
+                        #normalise direction and scale by speed to get desired velocity
                         distance_to_target = (direction_x ** 2 + direction_y ** 2) ** 0.5
                         if distance_to_target > 0:
+
                             desired_velocity_x = (direction_x / distance_to_target) * self.max_velocity
                             desired_velocity_y = (direction_y / distance_to_target) * self.max_velocity
                 else:
+                    # No path found or path is empty, so do direct movement towards player as fallback
                     direction_x = (player.x + player.width // 2) - (self.x + self.width // 2)
                     direction_y = (player.y + player.height // 2) - (self.y + self.height // 2)
                     distance_to_target = (direction_x ** 2 + direction_y ** 2) ** 0.5
@@ -212,30 +302,29 @@ class Enemy:
                         desired_velocity_x = (direction_x / distance_to_target) * self.max_velocity * 0.7
                         desired_velocity_y = (direction_y / distance_to_target) * self.max_velocity * 0.7
 
-        acceleration_factor = 0.7 if abs(desired_velocity_x) > 0 or abs(desired_velocity_y) > 0 else 0.5
-        
-        self.velocity_x += (desired_velocity_x - self.velocity_x) * acceleration_factor
-        self.velocity_y += (desired_velocity_y - self.velocity_y) * acceleration_factor
-        
-        if abs(desired_velocity_x) < 0.1:
-            self.velocity_x *= 0.85  
-        if abs(desired_velocity_y) < 0.1:
-            self.velocity_y *= 0.85
+        # enemy movement is not natural enough
+        # so use acceleration to smoothly change velocity towards desired velocity, and friction to slow down when no input
 
+        if abs(desired_velocity_x) > 0 or abs(desired_velocity_y) > 0 : acceleration_factor = 0.7
+        else: acceleration_factor  = 0.5
+
+        # Smoothly adjust velocity towards desired velocity        
+        self.velocity_x += (desired_velocity_x - self.velocity_x)*acceleration_factor
+        self.velocity_y += (desired_velocity_y - self.velocity_y)*acceleration_factor
+        
+        if abs(desired_velocity_x) < 0.1: self.velocity_x *= 0.85  
+        if abs(desired_velocity_y) < 0.1: self.velocity_y *= 0.85
+
+        #determine if the enemy is moving based on velocity magnitude with a small threshold to prevent jitter when nearly stationary
         speed_threshold = 0.05
         self.is_moving = abs(self.velocity_x) > speed_threshold or abs(self.velocity_y) > speed_threshold
         
         if abs(self.velocity_x) > speed_threshold:
-            if self.velocity_x > 0:
-                self.facing_dir = 1  
-            else:
-                self.facing_dir = 0
+            if self.velocity_x > 0: self.facing_dir = 1  
+            else: self.facing_dir = 0
 
-        # Play sounds based on movement state
-        if self.is_moving:
-            self.play_sound(player, "attack")
-        else:
-            self.play_sound(player, "idle")
+        # Idle ambient sound while stationary near player
+        if not self.is_moving: self.play_sound(player, "idle")
 
         # Check knife attack collision
         if knife_attack and knife_damage > 0:
@@ -258,6 +347,7 @@ class Enemy:
                         if game is not None and hasattr(self, 'xp_reward'):
                             game.collect_xp(self.xp_reward)
                         
+                        # Remove enemy and spawn particles
                         enemies.remove(self)
                         if particles is not None:
                             for i in range(self.particle_num): 
@@ -316,6 +406,7 @@ class Enemy:
         if enemy_rect.colliderect(player.get_rect(player.x, player.y)):
             if health_bar:
                 health_bar.damage(self.damage)
+            self.play_sound(player, "attack")
 
         # Decrement hit timer (for white hit effect)
         if self.hit_timer > 0:
@@ -324,20 +415,31 @@ class Enemy:
         if self.is_moving or abs(self.velocity_x) > 0.01 or abs(self.velocity_y) > 0.01:
             self.move_and_collide(self.velocity_x, self.velocity_y, tiles, enemies, bullets, player, health_bar, particles)
 
-    def update_pathfinding(self, player, collision_grid):
+    def update_pathfinding(self, player: Player, collision_grid: list[list[int]]) -> None:
+        """Recompute the A* path from this enemy to the player.
+
+        Results are stored in ``self.path`` as a list of ``(col, row)`` tile
+        coordinates.  Does nothing if the start/goal tile is out of bounds.
+
+        Args:
+            player: The player entity providing the goal position.
+            collision_grid: 2-D grid used by :class:`~utils.pathfinding.Pathfind`.
+        """
         if not hasattr(self, 'path'):
             self.path = []
             self.path_arr_index = 0
 
         try:
-            grid = Grid(matrix=collision_grid)
-            start_x = int((self.x + self.width // 2) // 16)
-            start_y = int((self.y + self.height // 2) // 16)
+            # Calculate start and end tile coordinates based on enemy and player positions
+            start_x = int((self.x +self.width// 2) //16)
+            start_y = int((self.y + self.height//2)// 16)
+
             end_x = int((player.x + player.width // 2) // 16)
             end_y = int((player.y + player.height // 2) // 16)
 
             grid_width = len(collision_grid[0])
             grid_height = len(collision_grid)
+
             start_x = max(0, min(start_x, grid_width - 1))
             start_y = max(0, min(start_y, grid_height - 1))
             end_x = max(0, min(end_x, grid_width - 1))
@@ -347,19 +449,25 @@ class Enemy:
                 0 <= start_y < grid_height and
                 0 <= end_x < grid_width and
                 0 <= end_y < grid_height):
-                start = grid.node(start_x, start_y)
-                end = grid.node(end_x, end_y)
-                finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
-                path, _ = finder.find_path(start, end, grid)
+                # Use custom pathfinding - note: Pathfind uses (row, col) format
+                pathfinder = Pathfind(collision_grid)
+                # Start and goal are (row, col) = (y, x) in the grid
+                path = pathfinder.find_path((start_y, start_x), (end_y, end_x))
                 if path and len(path) > 1:
-                    self.path = [(node.x, node.y) for node in path[1:]]
+                    # Convert from (row, col) to (x, y) format, skip the first node (current position)
+                    self.path = [(col, row) for row, col in path[1:]]
                     self.path_arr_index = 0
+
         except Exception as e:
             print("Error occurred while updating pathfinding:", e)
             self.path = []
             self.path_arr_index = 0
 
-    def update_animation(self, dt):
+    def update_animation(self, dt: float) -> None:
+        """Advance the sprite animation timer and flip to the next frame.
+        Args:
+            dt: Delta time in milliseconds since the last frame.
+        """
         self.animation_timer += dt
         
         if self.animation_timer >= self.animation_speed:
@@ -375,19 +483,22 @@ class Enemy:
                 if frame_count > 0:
                     self.current_frame = (self.current_frame + 1) % frame_count
 
-    def draw(self, surface, camera=None):
+    def draw(self, surface: pygame.Surface, camera: Camera | None = None) -> None:
+        """Render the enemy sprite to *surface*, flashing white when hit.
+
+        Args:
+            surface: Pygame surface to draw onto.
+            camera: Optional camera for world–to–screen transformation.
+        """
+        #select the correct animation frame based on movement state and facing direction
         if self.is_moving:
             current_img = self.walk_frames[self.current_frame % len(self.walk_frames)]
-            if self.facing_dir == 0:  
-                current_img = pygame.transform.flip(current_img, True, False)
         else:
             current_img = self.idle_frames[self.current_frame % len(self.idle_frames)]
-            if self.facing_dir == 0:
-                current_img = pygame.transform.flip(current_img, True, False)
-        if self.hit_timer > 0:
-            self.speed = 1.2
-        else:
-            self.speed = self.og_speed
+
+        if self.facing_dir == 0:
+            current_img = pygame.transform.flip(current_img, True, False)
+
         if self.hit_timer > 6:
             current_img = current_img.copy()
             current_img.fill((255, 255, 255), special_flags=pygame.BLEND_ADD)
@@ -403,10 +514,36 @@ class Enemy:
         else:
             surface.blit(current_img, (self.x, self.y))
 
-    def move_and_collide(self, dx, dy, tiles, enemies, bullets=None, player=None, health_bar=None, particles=None):
+    def move_and_collide(
+        self,
+        dx: float,
+        dy: float,
+        tiles: list[pygame.Rect],
+        enemies: list[Enemy],
+        bullets: list | None = None,
+        player: Player | None = None,
+        health_bar: HealthBar | None = None,
+        particles: list | None = None,
+    ) -> None:
+        """Move the enemy by (dx, dy) and resolve wall / enemy collisions.
+
+        Axes are processed separately so the enemy slides along walls.  When
+        two enemies overlap, the moving one is pushed back and slowed briefly.
+
+        Args:
+            dx: Horizontal movement this frame.
+            dy: Vertical movement this frame.
+            tiles: Wall collision rectangles.
+            enemies: All active enemies (for push-apart resolution).
+            bullets: Unused here but kept for signature consistency.
+            player: Unused here but kept for signature consistency.
+            health_bar: Unused here but kept for signature consistency.
+            particles: Unused here but kept for signature consistency.
+        """
         self.x += dx
         enemy_rect = self.get_rect(self.x, self.y)
         
+        # Check collisions with walls and adjust position accordingly
         for wall in tiles:
             if enemy_rect.colliderect(wall):
                 if dx > 0:
@@ -415,6 +552,7 @@ class Enemy:
                     self.x = wall.right - self.collision_offset_x
                 break
         
+        # Check collisions with other enemies and push back if overlapping x-axis
         for other_enemy in enemies:
             if other_enemy != self:
                 other_rect = other_enemy.get_rect(other_enemy.x, other_enemy.y)
@@ -438,7 +576,7 @@ class Enemy:
                 elif dy < 0:
                     self.y = wall.bottom - self.collision_offset_y
                 break
-        
+        #same but y axis
         for other_enemy in enemies:
             if other_enemy != self:
                 other_rect = other_enemy.get_rect(other_enemy.x, other_enemy.y)
@@ -452,33 +590,45 @@ class Enemy:
                     self.speed = self.original_speed * 0.3
                     break
 
-    def play_sound(self, player, type="attack"):
+    def play_sound(self, player: Player, type: str = "attack") -> None:
+        """Attempt to play a distance-attenuated sound for this enemy.
+
+        Args:
+            player: The player entity (used to calculate distance).
+            type: Sound category key, one of ``'attack'``, ``'idle'``,
+                ``'hurt'``, or ``'death'``.
+        """
         distance = self.get_distance_to_player(player)
         
         if type == "attack":
-            # Only play attack sounds when close to player and timer allows
-            if distance < 60 and self.sound_timer <= 0:
+            # Play attack sounds when close to player and timer allows.
+            # Keep attenuation range aligned with trigger distance to avoid
+            # silent plays near the edge.
+            max_distance = 80
+            if distance < max_distance and self.sound_timer <= 0:
                 if type in self.sound_objects and self.sound_objects[type] is not None:
                     sound_list = self.sound_objects[type]
                     if sound_list:
                         sound = random.choice(sound_list)
-                        base_volume = max(0, 1 - distance/50)
+                        base_volume = max(0, 1 - distance / max_distance)
                         final_volume = base_volume * game_settings.get_sfx_volume()
                         sound.set_volume(final_volume)
                         sound.play()
                     self.sound_timer = random.uniform(80, 160)
         elif type == "idle":
-            if not self.is_moving and distance < 100 and self.sound_timer <= 0:
+            max_distance = 120
+            if not self.is_moving and distance < max_distance and self.sound_timer <= 0:
                 if type in self.sound_objects and self.sound_objects[type] is not None:
                     sound_list = self.sound_objects[type]
                     if sound_list:
                         sound = random.choice(sound_list)
-                        base_volume = max(0, 1 - distance/100)
+                        base_volume = max(0, 1 - distance / max_distance)
                         final_volume = base_volume * game_settings.get_sfx_volume()
                         sound.set_volume(final_volume)
                         sound.play()
                     self.sound_timer = random.uniform(160, 320)
         else:
+            #play hurt and death sounds without distance check but still with timer to prevent spam
             if type in self.sound_objects and self.sound_objects[type] is not None:
                 sound_list = self.sound_objects[type]
                 if sound_list:

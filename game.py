@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import pygame, sys
 from pytmx.util_pygame import load_pygame
 import math
 from ui.menu import BunkerMenu
 from entities.enemy import Enemy
-from entities.player import Player  
+from entities.player import Player
 from entities.particle import Particle
 from entities.dust_particle import DustParticleSystem
 from world.tilemap import TiledMap, Tile
@@ -22,8 +24,6 @@ from utils.culling import FrustumCuller
 from config.game_settings import game_settings
 from weapons.knife import Knife
 from ui.inventory import inventory
-from ui.menu import BunkerMenu
-
 
 import json
 import os
@@ -39,7 +39,22 @@ tile_size = 16
 
 
 class Game:
-    def __init__(self, screen_width, screen_height, displaySize, zoom_level=1.0):
+    """
+    Top level game object that owns all methods and runs the main loop.
+    It intialises pygame and creates the display window
+    loads tiled maps and spawns enemies and initialises UI elements
+    runs the main while loop: event processing, updating all entities, renderingeverything to the screen, and managing level transitions
+    """
+    def __init__(self, screen_width: int, screen_height: int, displaySize: float, zoom_level: float = 1.0) -> None:
+        """
+        Initialise all game methods and loads the starting level.
+
+        Args:
+            screen_width: width of screen in pixels.
+            screen_height: height of screen in pixels.
+            displaySize: Scaling ratio(screen_width / 2560).
+            zoom_level: Initial camera zoom factor(default 1.0).
+        """
         pygame.init()
         self.screen_width = screen_width
         self.screen_height = screen_height
@@ -51,15 +66,15 @@ class Game:
         #set initial weapons and we will add them later to the inventory
         #i will some more definition as I create more items
         self.gun = Gun(0, 0, "pistol", self.displaySize)
-        self.knife = Knife(0, 0, "knife", self.displaySize)
+        self.knife= Knife(0, 0, "knife", self.displaySize)
 
         #added items to inventory
+
         self.inventory.add_item(self.gun, 0)
         self.inventory.add_item(self.knife, 1)
 
         # starting weapon index, index used to track weapon used and switch between them
         self.current_weapon_index = 0
-
         #fetch current weapon from inventory class
         self.current_weapon = self.inventory[self.current_weapon_index]['item']
 
@@ -74,7 +89,7 @@ class Game:
         
         #start on level 0 and set sound files and xp events list
         self.level = 0
-        self.pling_sounds = []
+        self.orb_sounds = []
         self.xp_sound_events = []  
 
         #set font for FPS display on top right
@@ -82,53 +97,60 @@ class Game:
         
         
         # Load all sound files from the Orbs folder, copies of original with small changes in pitch like in minecraft
-        orbs_folder = "Assets/Sounds/Orbs"
+        orbs_folder ="Assets/Sounds/Orbs"
+
         if os.path.exists(orbs_folder):
             for filename in os.listdir(orbs_folder):
-                if filename.lower().endswith(('.mp3', '.wav', '.ogg')):
+
+                if filename.lower().endswith(('.mp3','.ogg')): # check the different audio types as I am using different formats.
                     try:
-                        sound_path = os.path.join(orbs_folder, filename)
+                        sound_path = os.path.join(orbs_folder,filename)
                         sound = pygame.mixer.Sound(sound_path)
-                        self.pling_sounds.append(sound)
+                        self.orb_sounds.append(sound)
                         #print(f"Loaded orb sound: {str(filename)}")
                         #print error if sound doesn't load
-                    except pygame.error as e:
-                        print(f"Failed to load {filename}: {e}")
+                    except pygame.error as error:
+                        print( f"Failed to load {filename}: {error}")
         #if plings ounds array is empty, load default sound for orb, in case folder is missing
-        if not self.pling_sounds:
+        if not self.orb_sounds:
             try:
-                self.pling_sounds.append(pygame.mixer.Sound("Assets/Sounds/orb.mp3"))
+                self.orb_sounds.append(pygame.mixer.Sound("Assets/Sounds/orb.mp3"))
                 print("Loaded default orb sound: orb.mp3")
             except pygame.error as e:
                 print(f"Failed to load default orb sound: {e}")
-        
-        print(f"Total orb sounds loaded: {len(self.pling_sounds)}")
+        self.bullets = []
+
+        print(f"Total orb sounds loaded: {len(self.orb_sounds)}")
         pygame.display.set_caption("Dungeon Game")
+
 
         # load the initial map for the first level
         self.game_map = TiledMap(f"Tiled/level{self.level}.tmx")
         self.game_map.set_current_level(self.level)
-        self.path_grid_cache = None  
+        self.path_grid_cach = None  
 
         #set camera default
         self.camera = Camera(self.screen_width, self.screen_height, zoom_level)
 
+
         #initialise player and other entities and utils for the game
         self.player = Player(100, 100, 32, 32, (0, 255, 0), self.displaySize)
         self.enemies = []
-        self.bullets = []
         self.music = Music()
         self.light = Lighting(200)
 
         
-        """  Onscreen elements initialisation"""
-        self.health_bar = HealthBar(int(0.5 * screen_width) - 0.5 * int(300 * self.displaySize) , int(screen_height - 150 * self.displaySize),
-                        int(8 * self.displaySize), int(3 * self.displaySize), self.displaySize)
+        """ Initialise elements on screen like health bar and experience"""
+
+        self.health_bar = HealthBar(int(0.5*screen_width) - 0.5*int(300*self.displaySize) ,int(screen_height-150*self.displaySize) ,
+                        int(8* self.displaySize), int(3*self.displaySize), self.displaySize)
 
         #set bar to bottom right corner
         bar_width = int(30 * self.displaySize)
+
         bar_height = int(150 * self.displaySize)
         bar_x = self.screen_width - bar_width - int(100 * self.displaySize) #100 pixels on right side
+
         bar_y = self.screen_height - bar_height - int(100 * self.displaySize)  #100 pixels from bottom edge
 
 
@@ -142,36 +164,45 @@ class Game:
         self.xp = 0
 
         self.menu = BunkerMenu(self.screen_width // 2 - 150, self.screen_height // 2 - 150, self.displaySize)
+        
         self.transition_timer = 0
 
         self.lightlevel = level_data["level1"]["lighting"]
 
         self.chest_sounds = {
             "open": "Assets/Sounds/chest_open.mp3",
+
             "close": "Assets/Sounds/chest_close.mp3"
         }
         self.player_sounds = {
+
             "hurt" : "Assets/Sounds/Player/player_hurt.mp3",
+
             "death" : "Assets/Sounds/Player/player_death.mp3"
         }
 
         self.lever_sound = pygame.mixer.Sound("Assets/Sounds/Pressure_plate.mp3")
+        
         self.spike_retract = pygame.mixer.Sound("Assets/Sounds/spikes_retract.mp3")
 
         # set chest sounds for future use
         self.chest_sounds["open"] = pygame.mixer.Sound(self.chest_sounds["open"])
+        
         self.chest_sounds["close"] = pygame.mixer.Sound(self.chest_sounds["close"])
         
         self.player_sounds["hurt"] = pygame.mixer.Sound(self.player_sounds["hurt"])
         self.player_sounds["death"] = pygame.mixer.Sound(self.player_sounds["death"])
 
+        # set fade overlay variables for level transition effect
         self.fade_overlay_alpha = 0
         self.fade_overlay_duration = 1000  
         self.fade_overlay_timer = 0
         self.fade_overlay_active = False
 
+        #dictionary to track individual level states.
         self.levers = {1: False, 2: False, 3: False, 4: False}
 
+        #load images for press E prompt
         self.press_e_image = pygame.image.load("Assets/press_e.png")
         self.press_e_image = pygame.transform.scale(self.press_e_image, (240 * self.displaySize, 192 * self.displaySize))  
         self.show_press_e = False
@@ -187,16 +218,13 @@ class Game:
             frame_files = sorted([f for f in os.listdir(letter_folder) if f.endswith('.png')])
             for frame_file in frame_files:
                 # join folder path with file to get full path
-                frame_path = os.path.join(letter_folder, frame_file)
-                frame_image = pygame.image.load(frame_path)
-                original_ratio = 240 / 180
-                scale_x = self.screen_width / 240
-                scale_y = self.screen_height / 180
-                scale = min(scale_x, scale_y) * 0.8
+                frame_path =os.path.join(letter_folder, frame_file)
+                frame_image =pygame.image.load(frame_path)
+                
+                scale = min(self.screen_width/ 240, self.screen_height /180)* 0.8
 
-                new_width = int(240 * scale)
-                new_height = int(180 * scale)
-                frame_image = pygame.transform.scale(frame_image, (new_width, new_height))
+                #get proportional scaling for letter animation relative to screen size
+                frame_image = pygame.transform.scale(frame_image, (int(240 * scale), int(180 * scale)))
                 self.letter_frames.append(frame_image)
 
         #settings all variables to properly time the animation
@@ -204,9 +232,11 @@ class Game:
         self.letter_frame_index = 0
         self.letter_animation_timer = 0
         self.letter_animation_speed = 100  
-        self.letter_animation_complete = False
+        self.letter_anmation_complete = False
+
         #set position to the centre of screen for the beautiful letter animation
         if self.letter_frames:
+            
             self.letter_x = (self.screen_width -self.letter_frames[0].get_width()) // 2
             self.letter_y = (self.screen_height- self.letter_frames[0].get_height()) // 2
         else:
@@ -222,12 +252,15 @@ class Game:
         #fetch player starting position from level data json file
         self.player.x , self.player.y = level_data[f"level{self.level}"]["start_pos"]
         
-    def run(self):
+    def run(self) -> None:
+        """
+       run main loop until player quits
+        """
         pygame.init()
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
         pygame.display.set_caption("Dungeon Run")
 
-        # settings frustrum culler for oprimisation especially for level 3 where there are many ennemies and 1000+ tiles to render at once
+        # settings frustrum culler for oprimisation especially for level 3 where there are many ennemies and 10000+ tiles (layering) to render at once
         # basically it only render tiles that are visible within the camera's view instead of rendering the whole surface every frame
         culler = FrustumCuller(self.screen_width, self.screen_height)
 
@@ -249,7 +282,7 @@ class Game:
 
         #initialize weapons
         gun = self.gun
-        knife = self.knife
+        knife =self.knife
         player_x = self.game_map.width// 2
         player_y = self.game_map.height// 2
 
@@ -257,7 +290,7 @@ class Game:
         self.player = Player(player_x, player_y, 16,28, (255, 0, 0),self.displaySize)
 
         #set enemies for the specific level
-        self.load_enemies_for_level(self.enemies)
+        self.loadEnemiesForLevel(self.enemies)
 
         zoom_level = self.displaySize * 13
         camera = Camera(self.screen_width, self.screen_height, zoom_level)
@@ -273,8 +306,8 @@ class Game:
         
         # Initialize dust particle system for lighting effects
         #self explanatory but if you increase num_particles you will get more particles but it will run slower
-        #~~(o.o)~~
-        self.dust_particles = DustParticleSystem(num_particles=30, light_radius=350)
+        
+        self.dust_particles = DustParticleSystem(num_particles=60, light_radius=350)
         player_center_x = self.player.x + self.player.width/ 2
         player_center_y = self.player.y+ self.player.height / 2
         self.dust_particles.initialize(player_center_x, player_center_y)
@@ -340,7 +373,7 @@ class Game:
                     sound_index = event.type - pygame.USEREVENT - 1
                     delayed_sound_attr = f'delayed_pling_{sound_index + 1}'
                     # play the stored pling sound when player gains xp
-                    # it works by playing a random sound from the pling_sounds list and setting a delay
+                    # it works by playing a random sound from the orb_sounds list and setting a delay
 
                     #check if sound exists defined earlier for delayed_sound_attr
                     if hasattr(self, delayed_sound_attr):
@@ -353,16 +386,16 @@ class Game:
                     else:
                         # In case doesn't exist, select a random pling sound
                         # a bit slower but better than nothing
-                        if self.pling_sounds:
-                            pling_sound = random.choice(self.pling_sounds)
+                        if self.orb_sounds:
+                            orbsound = random.choice(self.orb_sounds)
 
                             # generate random number for volume between range for cool minecraft effect
                             # yes, a lot of this game is inspired by minecraft
                             # that's because it's a great game.
                             base_volume = random.uniform(0.3, 0.8)
                             final_volume = base_volume * game_settings.get_sfx_volume()
-                            pling_sound.set_volume(final_volume)
-                            pling_sound.play()
+                            orbsound.set_volume(final_volume)
+                            orbsound.play()
                     
                     # Disable this timer and remove from tracking
                     #otherwise it will keep triggering every frame
@@ -377,14 +410,26 @@ class Game:
                     # restart or quit based on user input
                     if result == "restart":
                         self.restart_game()
-
                     elif result == "quit":
                         running = False
                 elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_z:
-                        print(f"inventory items {self.inventory.items}")
-                    if event.key == pygame.K_ESCAPE:
-                        return True
+                    if event.key == pygame.K_ESCAPE and not self.game_over:
+                        pause_menu = BunkerMenu(
+                            self.screen_width,
+                            self.screen_height,
+                            self.displaySize,
+                            is_pause_menu=True,
+                        )
+                        pause_result = pause_menu.run()
+                        if pause_result == "quit":
+                            running = False
+                            break
+                        pygame.display.set_caption("Dungeon Run")
+                        continue
+                    
+                    #debug check if inventpry working properly
+                    #if event.key == pygame.K_z:
+                        #print(f"inventory items {self.inventory.items}")
                     if event.key == pygame.K_e:
                         if self.level == 1:
                             # On level 1 there is a chest, if you get close enough a letter should popup when you press e
@@ -399,7 +444,7 @@ class Game:
                                 self.chest_sounds["close"].play()
                                 self.show_letter = False
                                 # reset animation so animation plays again next time
-                                self.letter_animation_complete = False
+                                self.letter_anmation_complete = False
                                 self.letter_frame_index = 0
                                 self.letter_animation_timer = 0
 
@@ -416,7 +461,7 @@ class Game:
                                         self.chest_sounds["open"].play()
                                         self.letter_frame_index = 0
                                         self.letter_animation_timer = 0
-                                        self.letter_animation_complete = False
+                                        self.letter_anmation_complete = False
                                         break
                         elif self.level == 2:
                             #On level 2 the E key is used to interact with levers instead of chest
@@ -458,7 +503,7 @@ class Game:
                     if self.current_weapon:
                         print(f"Swiched to{self.current_weapon}")
 
-                #use wheel to witch wepaons in addition to number keys for smoother experience
+                #use wheel to witch weapons in addition to number keys for smoother experience
                     
                 elif event.type == pygame.MOUSEWHEEL:
                     
@@ -540,7 +585,7 @@ class Game:
                     self.fade_overlay_alpha =int(255 *(1 -progress))
 
             # update letter animation changing frame
-            if self.show_letter and not self.letter_animation_complete and len(self.letter_frames) > 0:
+            if self.show_letter and not self.letter_anmation_complete and len(self.letter_frames) > 0:
                 #update the beautiful letter animation frame by frame
                 self.letter_animation_timer += dt
                 if self.letter_animation_timer >= self.letter_animation_speed:
@@ -550,7 +595,7 @@ class Game:
                         # a bit hacky but it basicialy stops frame from spilling over limit
                         # and then stops animation completely
                         self.letter_frame_index = len(self.letter_frames) - 1
-                        self.letter_animation_complete = True
+                        self.letter_anmation_complete = True
 
             # update every particle that was spawned when an enemy was killed
             # Use list comprehension for faster performance
@@ -678,26 +723,34 @@ class Game:
                 endlevel_tiles = self.game_map.endlevel_layer("endlevel")
                 endlevel_tiles = self.game_map.endlevel_layer("endlevel")
 
-           
+            
         pygame.quit()
-        return False
 
 
-    def show_fps(self, clock):
+    def show_fps(self, clock: pygame.time.Clock) -> None:
+        """show current framrate in top right of screen
+
+        Args:
+            pygame.time.Clock for tracking time and calculating FPS
+        """
         # Display FPS in the top-right corner
         text = self.fps_text_font.render(str(round(clock.get_fps(),2)), True, (255,255,255))
         self.screen.blit(text, (self.screen_width - 100, 50))
 
-    def next_level(self):
+    def next_level(self) -> None:
+        """
+        clear all entities and call
+        the method `level_transition`.
+        """
         # Clean up current level entities
 
         self.enemies.clear()
         self.particles.clear()
-        self.player.x , self.player.y = level_data[f"level{self.level}"]["start_pos"]
+        self.player.x, self.player.y =level_data[f"level{self.level}"]["start_pos"]
 
-        self.camera.offset_x = 0
+        self.camera.offset_x =0
         self.camera.offset_y = 0
-        self.camera.zoom = 1.0
+        self.camera.zoom= 1.0
         
         self.camera.width = self.screen_width
         self.camera.height = self.screen_height
@@ -705,37 +758,44 @@ class Game:
         self.level_transition()
 
 
-    def level_transition(self):
+    def level_transition(self) -> None:
+        """Fade to black, increment the level counter, load the new map,
+        respawn enemies, reset levers and restore collision data.
+        """
+
+        #fade transition logic 
         self.transition_timer = 500
         fade_surface = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+       
         clock = pygame.time.Clock() 
-
         fade_out_duration = 1000 
-        fade_out_start = pygame.time.get_ticks()
+        fade_out_start= pygame.time.get_ticks()
         while True:
-            dt = clock.tick(self.FPS) 
-            elapsed = pygame.time.get_ticks() - fade_out_start
-            if elapsed > fade_out_duration:
-                break
-            
-            progress = elapsed / fade_out_duration
+            # get time elapsed since last frame to update fade animation smoothly
+            dt= clock.tick(self.FPS) 
+            elapsed =pygame.time.get_ticks() - fade_out_start
+
+            if elapsed> fade_out_duration: break
+            progress = elapsed/ fade_out_duration
             alpha = int(255 * (progress ** 0.5))  
-            
             fade_surface.fill((0, 0, 0, alpha))
             self.screen.blit(fade_surface, (0, 0))
             pygame.display.flip()
 
+        #after transition increment level and load map accordingly
         self.level += 1
-        print("Transitioning from level {} to {}".format(self.level-1, self.level))
+        #print("Transitioning from level{} to {}".format(self.level-1, self.level)) #debug
         next_level_path = f"Tiled/level{self.level}.tmx"
         print(next_level_path)
 
         try:
-            self.game_map = TiledMap(next_level_path)
+            self.game_map =TiledMap(next_level_path)
             self.game_map.set_current_level(self.level)
             self.path_grid = self.make_path_grid()
+
+        #if next level file doesn't exist 
         except FileNotFoundError:
-            print(f"No more levels. File not found: {next_level_path}")
+            print(f"No more levels file not found: {next_level_path}")
             return
 
         self.player.x , self.player.y = level_data[f"level{self.level}"]["start_pos"]
@@ -747,8 +807,7 @@ class Game:
             self.chests.append(chest)
 
         # Clean up old enemies before clearing list
-        for enemy in self.enemies:
-            enemy.cleanup()
+        for enemy in self.enemies:enemy.cleanup()
         self.enemies.clear()
         
         # Clean up particles
@@ -766,8 +825,9 @@ class Game:
         import gc
         gc.collect()
         
-        self.load_enemies_for_level(self.enemies)
+        self.loadEnemiesForLevel(self.enemies)
 
+        #set camera zoom and update to player pos for new level
         self.zoom_level = 8.0
         self.camera.zoom = self.zoom_level
         self.camera.update(self.player)
@@ -776,56 +836,91 @@ class Game:
         self.fade_overlay_active = True
         self.fade_overlay_alpha = 255
         self.fade_overlay_timer = 0
-
-        # IMPORTANT: Reload collision tiles for the new level
+  
+        #IMPORTANT: this reloads collision tiles for the new level
         self.map_needs_collision_update = True
 
+        # Specific logic for second level: levers and retractable spikes
         if self.level == 2:
             self.level2 = level2()
             self.levers = {1: False, 2: False, 3: False, 4: False}  
             self.game_map.set_all_levers_pulled(False)  
             self.spikes_deactivated_sound_played = False  
+            # find layer with levers and create a lever object for each
             lever_data = self.game_map.lever_layer("levers")
             self.lever_list = []
+            #each lever has an id like lever1, lever2 etc for easy tracking in level2 class and map state
             for i, lever_info in enumerate(lever_data):
                 lever_id = f"lever{i+1}"
-                lever = Lever(lever_info['x'], lever_info['y'], lever_info['type'], lever_id=lever_id)
+                lever = Lever(lever_info['x'],lever_info['y'],  lever_info['type'],lever_id=lever_id)
                 self.lever_list.append(lever)
 
-        self.lightlevel = level_data[f"level{self.level}"]["lighting"]
+         # get lighting level from json file for repective level
+        self.lightlevel =level_data[f"level{self.level}"]["lighting"]
 
-    def reload_collision_data(self):
-        self.path_grid_cache = None 
+    def reload_collision_data(self) -> tuple[list[pygame.Rect], list[pygame.Rect]]:
+        """
+        Re-extract wall and spike collision tiles from the current map.
+
+        Tires different layers names incase of inconsititent layer names
+        Returns:
+            A tuple pygame.Rect lists.
+        """
+        self.path_grid_cach = None 
+
         try:
-            collision_tiles = self.game_map.collision_layer(["wall lining", "wall lining 2"])
-            spike_tiles = self.game_map.collision_layer(["spikes"])
+            collision_tiles= self.game_map.collision_layer(["wall lining", "wall lining 2"])
+            spike_tiles =self.game_map.collision_layer(["spikes"])
             return collision_tiles, spike_tiles
+
         except Exception as e:
             try:
+
                 collision_tiles = self.game_map.collision_layer(["wall lining", "wall lining2"])
-                spike_tiles = self.game_map.collision_layer(["spikes"])
+                spike_tiles =  self.game_map.collision_layer(["spikes"])
                 return collision_tiles, spike_tiles
-            except Exception as e_2:
+            
+            except Exception as e1:
                 try:
                     collision_tiles = self.game_map.collision_layer(["walllining1", "walllining2"])
                     spike_tiles = self.game_map.collision_layer(["spikes"])
                     return collision_tiles, spike_tiles
-                except Exception as e_3:
-                    collision_tiles = self.game_map.collision_layer(["wall lining"])
-                    spike_tiles = []
+
+                except Exception as e2:
+                    #error handling incase of different spelling of layer
+                    collision_tiles =  self.game_map.collision_layer(["wall lining"])
+                    spike_tiles =  []
                     return collision_tiles, spike_tiles
 
-    def spawn_enemy(self, x, y, enemy_type):
+    def spawn_enemy(self, x: float, y: float, enemy_type: str) -> None:
+        """
+        spawn single enemy of the given type at world position (x, y).
+
+        Args:
+            x: x  coordinate.
+            y: y  coordinate.
+            enemy_type: Key for "enemy_data.json" file.
+        """
         data = enemy_data[enemy_type]
         enemy = Enemy(x, y, enemy_type, data)
         self.enemies.append(enemy)
        
-    def load_enemies_for_level(self, enemies_list):
+    def loadEnemiesForLevel(self, enemies_list: list[Enemy]) -> None:
+        """
+        Populate the enemies_list with all enemies that should spawn on
+        current level using spawn locations from enemy_data.jso.
+
+        Args:
+            enemies_list: mutable list to add newly created enemies
+        """
         level_key = f"level{self.level}"
         for enemy_type, data in enemy_data.items():
+
             if "spawn_locations" in data and level_key in data["spawn_locations"]:
-                for spawn_point in data["spawn_locations"][level_key]:
-                    enemy = Enemy(spawn_point["x"], spawn_point["y"], enemy_type,data)
+                for spawnpoint in data[ "spawn_locations"][level_key]:
+
+                    enemy = Enemy(spawnpoint["x" ], spawnpoint["y"], enemy_type,data)
+
                     enemies_list.append(enemy)
 
         #for i in range(2): 
@@ -833,55 +928,69 @@ class Game:
          #   data = enemy_data[enemy_type]
         #    enemies.append(Enemy(player_x + (50 * i), player_y + (50 * i), enemy_type))
         
-    def make_path_grid(self):
+    def make_path_grid(self) -> list[list[int]]:
+        """
+        Build pathfinding grid for the current level.
+
+        The grid is a 2D list with 1 for walkable cells and 0 for blocked
+        cells.   Blocked cells are expanded by the largest enemy's footprint so
+        enemies never path through tiles they can't physically fit through.
+
+        Returns:
+            2D  grid of integers(rows×columns) matching the map's tile dimensions.
+        """
+
         # Return cached grid if available
-        if self.path_grid_cache is not None:
-            return self.path_grid_cache
+        # This saves processing time so you don't need to recalculate the grid every time
+        if self.path_grid_cach is not None: return self.path_grid_cach
         
-        walkable_tiles = []
-        tile_size = 16
+        walkable_tiles =[]
+        tile_size =16
         
-        # Calculate maximum enemy dimensions for pathfinding clearance
+        #calculate maximum enemy dimensions for pathfinding clearance
+        #set default to 1 tile to avoid issue if enemy data is missing or zero
         max_enemy_width = 0
         max_enemy_height = 0
         
         for enemy_type, data in enemy_data.items():
-            enemy_width_tiles = max(1, (data["width"] + tile_size - 1) // tile_size)  # Round up
-            enemy_height_tiles = max(1, (data["height"] + tile_size - 1) // tile_size)  # Round up
+            enemy_width_tiles = max(1, (data["width"] + tile_size - 1) // tile_size)  #round up
+            enemy_height_tiles = max(1, (data["height"] + tile_size - 1) // tile_size)  #round up
             max_enemy_width = max(max_enemy_width, enemy_width_tiles)
             max_enemy_height = max(max_enemy_height, enemy_height_tiles)
         
-        print(f"Pathfinding using clearance: {max_enemy_width}x{max_enemy_height} tiles")
+        print(f"Pathfinding using clearance:{max_enemy_width}x{max_enemy_height} tiles")
         
-        # Get current collision tiles from the same method that works for player/enemy collision
+        #get current collision tiles from the same method that works for player and enemy collision
         collision_tiles, spike_tiles = self.reload_collision_data()
         
-        # For level 2, handle spike tiles based on lever state
+        #for level 2, handle spike tiles based on lever state
         if self.level == 2 and hasattr(self, 'level2') and self.level2.all_levers_pulled:
             spike_tiles = []
         
         # Combine all obstacle tiles
-        all_obstacle_tiles = collision_tiles + spike_tiles
-        
+        all_obstacle_tile = collision_tiles +spike_tiles
         # Create a set of blocked tile coordinates for fast lookup
         blocked_tiles = set()
-        for tile_rect in all_obstacle_tiles:
-            # Convert pixel coordinates to tile coordinates
+        for tile_rect in all_obstacle_tile:
+            #convert pixel coordinates to tile coordinates
             tile_x = tile_rect.x // tile_size
             tile_y = tile_rect.y // tile_size
+
             blocked_tiles.add((tile_x, tile_y))
         
-        # Generate pathfinding grid
+        #  generate pathfinding grid
         for y in range(self.game_map.tmx_data.height):
             row = []
+
             for x in range(self.game_map.tmx_data.width):
-                # Check if this tile or adjacent tiles (for enemy size) are blocked
+                # Check if this tile or adjacent tiles (for enemy size) are blocked                
                 blocked = False
                 
                 # Check if any tile within the largest enemy's footprint is blocked
-                for check_y in range(y, min(self.game_map.tmx_data.height, y + max_enemy_height)):
-                    for check_x in range(x, min(self.game_map.tmx_data.width, x + max_enemy_width)):
-                        if (check_x, check_y) in blocked_tiles:
+                for check_y in range(y, min(self.game_map.tmx_data.height, y+ max_enemy_height)):                    
+                    for  check_x in range(x,min(self.game_map.tmx_data.width, x +  max_enemy_width)):
+                        if (check_x, check_y ) in blocked_tiles:
+                            
                             blocked = True
                             break
                     if blocked:
@@ -892,50 +1001,63 @@ class Game:
             walkable_tiles.append(row)
         
         # Cache the grid before returning
-        self.path_grid_cache = walkable_tiles
+        self.path_grid_cach = walkable_tiles
         return walkable_tiles
 
-    def player_damage(self, damage_amount):
+    def player_damage(self, damage_amount: float) -> None:
+        """
+        Apply damage to the player if the invincibility cooldown at 0.
+
+        Args:
+            damage_amount: damage used to update health bar.
+        """
+
+        #if damaged check if not invisible and apply damage and play sound
         if self.player_damage_cooldown <= 0:
             self.health_bar.damage(damage_amount)
             volume = 0.6 * game_settings.get_sfx_volume()
             self.player_sounds["hurt"].set_volume(volume)
             self.player_sounds["hurt"].play()
+
             self.player_damage_cooldown = self.player_damage_cooldown_duration
 
-    def collect_xp(self, xp_amount):
-        """Collect XP when an enemy is killed"""
+    def collect_xp(self, xp_amount: int) -> None:
+        """Collect XP when an enemy is elliminated, play pling sound and update XP bar."""
         self.xp += xp_amount
         
-        # Clear any existing XP sound timers first to prevent accumulation
+        #clear any existing XP sound timers first to prevent accumulating and memory leaks which are bad
         for event_id in self.xp_sound_events:
-            pygame.time.set_timer(event_id, 0)  # 0 disables the timer
-        self.xp_sound_events.clear()
-        
+            pygame.time.set_timer(event_id, 0)  #0 disables the timer
+
+        self.xp_sound_events.clear()       
         # Play multiple pling sounds based on XP amount
-        num_sounds = max(1, min(xp_amount // 2, 5))  # At least 1, max 5 sounds
-        
+        num_sounds = max(1, min(xp_amount // 2, 5))  #At least 1, max 5 sounds       
         for i in range(num_sounds):
-            # Randomly select a pling sound from the array
-            if self.pling_sounds:
-                pling_sound = random.choice(self.pling_sounds)
+            #randomly select pling sound from the array
+
+            if self.orb_sounds:
+                orbsound = random.choice(self.orb_sounds)
                 
                 # Random volume variation (0.3 to 0.8 base, then apply settings)
-                base_volume = random.uniform(0.3, 0.8)
-                final_volume = base_volume * game_settings.get_sfx_volume()
-                pling_sound.set_volume(final_volume)
-                
-                # Play with small delays between sounds for a cascade effect
-                if i == 0:
-                    pling_sound.play()
+                base_volume = random.uniform(0.3,0.8)
+
+                final_volume= base_volume* game_settings.get_sfx_volume()
+                orbsound.set_volume( final_volume)
+
+                #play with small delays between sounds for a cascade effect
+                if i==0:
+                    orbsound.play()
                 else:
                     # Store the sound in a way that the timer can access it
-                    setattr(self, f'delayed_pling_{i}', pling_sound)
+                    setattr(self, f'delayed_pling_{i}', orbsound)
                     event_id = pygame.USEREVENT + 1 + i
-                    self.xp_sound_events.append(event_id)  # Track this event
-                    pygame.time.set_timer(event_id, i * 70, 1)  # 1 = fire only once
+                    self.xp_sound_events.append(event_id)  #track event
+                    pygame.time.set_timer(event_id, i* 70,1)  # 1 = fire once only
         self.experience_bar.update(self.xp)
-    def restart_game(self):
+
+
+    def restart_game(self) -> None:
+        """Reset all game state back to level 0 for a new run."""
         # Reset level and game state
         self.level = 0
         self.game_over = False
@@ -950,58 +1072,54 @@ class Game:
         # Reset XP
         self.xp = 0
         
-        # Reset music
+        #reset music
         self.music.play_level_music(0)
         
-        # Reload level 0 map
+        # reload level 0 map
         self.game_map = TiledMap("Tiled/level0.tmx")
+
         self.game_map.set_current_level(self.level)
         self.path_grid = self.make_path_grid()
         
-        # Reset level 2 state and levers
+        # Reset level 2 states and levers
+
         self.level2 = level2()
-        self.levers = {1: False, 2: False, 3: False, 4: False} 
+        self.levers = {1:False, 2 : False , 3 : False, 4: False} 
+
         self.game_map.set_all_levers_pulled(False)
         self.lever_list = []  # Clear lever objects
-        
         # Reset player position
         self.player.x, self.player.y = level_data[f"level{self.level}"]["start_pos"]
-        
         # Clear all dynamic objects
         self.enemies.clear()
         self.particles.clear()
         self.bullets.clear()  # Clear bullets
         
         # Reload enemies for level 1
-        self.load_enemies_for_level(self.enemies)
-        
+        self.loadEnemiesForLevel(self.enemies) 
         # Reset camera
         self.camera.zoom = 10
         self.camera.update(self.player)
-        
         # Reset chests for level 1
         chest_data = self.game_map.chests_layer("chests")
         self.chests = []
         for chest_info in chest_data:
             chest = Chest(chest_info['x'], chest_info['y'], chest_info['type'])
             self.chests.append(chest)
-        
-        # Reset animation states
-        self.show_letter = False
-        self.letter_animation_complete = False
+        #reset animationstate
+        self.show_letter =False
+        self.letter_anmation_complete= False
+
         self.letter_frame_index = 0
+
         self.letter_animation_timer = 0
         self.show_press_e = False
         
-        # Reset fade overlay
+         # reset fade overlay
         self.fade_overlay_alpha = 0
         self.fade_overlay_timer = 0
-        self.fade_overlay_active = False
-        
+        self.fade_overlay_active = False        
         # Reset lighting level
         self.lightlevel = level_data["level0"]["lighting"]
-        
-        # Force collision data reload
+        #collision data reload
         self.map_needs_collision_update = True
-        
-        # Reset gun state (will be recreated in run method)
