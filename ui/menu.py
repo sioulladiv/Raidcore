@@ -317,7 +317,7 @@ class BunkerMenu:
         """Render the main menu (or the currently active sub-screen)."""
         self.screen.fill(self.black)
         
-        title_text = self.title_font.render("DUNGEON ESCAPE", True, self.red)
+        title_text = self.title_font.render("RAIDCORE", True, self.red)
         title_rect = title_text.get_rect(center=(self.screen_width // 2, 200))
         self.screen.blit(title_text, title_rect)
 
