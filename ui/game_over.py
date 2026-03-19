@@ -25,10 +25,20 @@ class GameOverScreen:
         self.button_width = 300
         self.button_height = 60
         self.button_spacing = 20
+        self.restart_button = pygame.Rect(0, 0, self.button_width, self.button_height)
+        self.quit_button = pygame.Rect(0, 0, self.button_width, self.button_height)
+        self._refresh_layout(screen_width, screen_height)
         
-        centerX = screen_width // 2
-        centerY = screen_height // 2
-        
+        self.selected_button = 0 
+
+    def _refresh_layout(self, screen_width: int, screen_height: int) -> None:
+        """Update button positions for the current window size."""
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+
+        centerX = self.screen_width // 2
+        centerY = self.screen_height // 2
+
         self.restart_button = pygame.Rect(
             centerX - self.button_width // 2,
             centerY + 50,
@@ -36,18 +46,12 @@ class GameOverScreen:
             self.button_height
         )
 
-
-        
         self.quit_button = pygame.Rect(
             centerX - self.button_width // 2,
             centerY + 50 + self.button_height + self.button_spacing,
             self.button_width,
-
             self.button_height
-
         )
-        
-        self.selected_button = 0 
         
     def handle_events(self, events: list[pygame.event.Event]) -> str | None:
         """Process pygame events and return an action string.
@@ -57,6 +61,10 @@ class GameOverScreen:
         Returns:
             ``'restart'``, ``'quit'``, or ``None`` when no action is taken.
         """
+
+        display_surface = pygame.display.get_surface()
+        if display_surface is not None:
+            self._refresh_layout(display_surface.get_width(), display_surface.get_height())
 
         # Handle keyboard navigation and selection
         for event in events:
@@ -77,14 +85,14 @@ class GameOverScreen:
 
             #handle mouse movement to update selected button and click to activate
             elif event.type == pygame.MOUSEMOTION:
-                mouse_pos = pygame.mouse.get_pos()
+                mouse_pos = event.pos
                 if self.restart_button.collidepoint(mouse_pos):
                     self.selected_button = 0
                 elif self.quit_button.collidepoint(mouse_pos):
                     self.selected_button = 1
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1: 
-                    mouse_pos = pygame.mouse.get_pos()
+                    mouse_pos = event.pos
                     if self.restart_button.collidepoint(mouse_pos):
                         return "restart"
                     elif self.quit_button.collidepoint(mouse_pos):
@@ -98,6 +106,8 @@ class GameOverScreen:
             screen: The main display surface.
             level: Current level index, used to pick the taunting message.
         """
+        self._refresh_layout(screen.get_width(), screen.get_height())
+
         overlay = pygame.Surface((self.screen_width, self.screen_height))
         overlay.set_alpha(200)
         overlay.fill((0, 0, 0))

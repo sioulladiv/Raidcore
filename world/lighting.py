@@ -4,9 +4,8 @@ from __future__ import annotations
 import pygame
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from entities.player import Player
-    from world.camera import Camera
+from entities.player import Player
+from world.camera import Camera
 
 
 class Lighting:
@@ -26,12 +25,15 @@ class Lighting:
                 make the unlit areas darker (default 210).
         """
         self.radius = radius
+        self.x = 0
+        self.y = 0
 
         self.darkness = darkness
         self.last_darkness = darkness
         
         # Cache the light gradient surface
         self.surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+        self.surface = self.surface.convert_alpha()
         
         self._regenerate_light_surface()
         
@@ -87,6 +89,7 @@ class Lighting:
             # Recreate surface if size changed
             if self.surface.get_width() != self.radius*2:
                 self.surface = pygame.Surface((self.radius*2, self.radius*2), pygame.SRCALPHA)
+                self.surface = self.surface.convert_alpha()
             self._regenerate_light_surface()
 
 
@@ -105,19 +108,29 @@ class Lighting:
             surface: main display surface
             camera: Active camera
         """
-        screen_size = (surface.get_width(), surface.get_height())
+        screen_w = surface.get_width()
+        screen_h = surface.get_height()
+        if screen_w <= 0 or screen_h <= 0:
+            return
+
+        screen_size = (screen_w, screen_h)
         
         # Only recreate dark_overlay if screen size changed
         if self.dark_overlay is None or self.last_screen_size != screen_size:
             self.dark_overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
+            self.dark_overlay = self.dark_overlay.convert_alpha()
             self.last_screen_size = screen_size
         
         #reuse the surface instead of creating new one
         self.dark_overlay.fill((0, 0, 0, self.darkness))
         
-        center_x = self.x
-        center_y = self.y
+        center_x = int(self.x)
+        center_y = int(self.y)
         
         self.dark_overlay.blit(self.surface, (center_x - self.radius, center_y - self.radius), special_flags=pygame.BLEND_RGBA_SUB)
-        
-        surface.blit(self.dark_overlay, (0, 0))
+
+        try:
+            surface.blit(self.dark_overlay, (0, 0))
+        except pygame.error:
+            # Skip this frame if the display surface was invalidated during resize.
+            return

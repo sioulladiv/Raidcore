@@ -46,7 +46,7 @@ class Settings:
     
     def get_master_volume(self) -> float:
         """Get master volume as a float from 0.0 to 1.0"""
-        return self.settings["master_volume"] / 100.0
+        return self.settings["master_volume"] / 100.0   
     
     def get_music_volume(self) -> float:
         """Get music volume as a float from 0.0 to 1.0"""

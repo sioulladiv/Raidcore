@@ -6,7 +6,7 @@ class Items:
     """Abstract base for weapons and other equippable items.
 
     Subclasses (e.g. :class:`~weapons.gun.Gun`,
-    :class:`~weapons.knife.Knife`) extend this with attack logic.
+    :class:`~weapons.knife.Knife`) extend this with attack logic.   
     """
 
     def __init__(self, x: float, y: float, item: str, height: int = 16, width: int = 16) -> None:

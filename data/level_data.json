@@ -9,7 +9,15 @@
     },
     "level2": {
         "start_pos": [390, 740],
-        "lighting": 225
+        "lighting": 225,
+        "item_pickups": [
+            {
+                "item_type": "knife",
+                "x": "center",
+                "y": "center",
+                "radius": 28
+            }
+        ]
     },
     "level3": {
         "start_pos": [871, 876],

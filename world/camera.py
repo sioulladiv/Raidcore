@@ -31,7 +31,7 @@ class Camera:
 
         Args:
             target: Any object with ``x``, ``y``, ``width`` and ``height``
-                attributes (typically the :class:`~entities.player.Player`).
+                attributes (typically the :class:`~entities.player.Player`).    
         """
         target_center_x = target.x + (target.width / 2)
         target_center_y = target.y + (target.height / 2)

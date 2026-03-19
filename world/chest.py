@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import pygame
 import math
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from entities.player import Player
+from entities.player import Player
 
 
 class Chest:

@@ -386,7 +386,7 @@ class TiledMap:
             if hasattr(layer, 'data'):
                 index = tile_y * self.tmx_data.width + tile_x
                 
-                if 0 <= index < len(layer.data):
+                if 0 <= index < len(layer.data):    
                     layer.data[index] = new_gid
                     return True
                 else:

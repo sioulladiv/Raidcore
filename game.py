@@ -67,11 +67,17 @@ class Game:
         #i will some more definition as I create more items
         self.gun = Gun(0, 0, "pistol", self.displaySize)
         self.knife= Knife(0, 0, "knife", self.displaySize)
+        self.item_catalog = {
+            "gun": self.gun,
+            "knife": self.knife,
+        }
 
         #added items to inventory
 
         self.inventory.add_item(self.gun, 0)
-        self.inventory.add_item(self.knife, 1)
+        self.collected_item_types = {"gun"}
+        self.default_pickup_radius = int(22 * self.displaySize)
+        self.level_pickups = []
 
         # starting weapon index, index used to track weapon used and switch between them
         self.current_weapon_index = 0
@@ -251,6 +257,7 @@ class Game:
 
         #fetch player starting position from level data json file
         self.player.x , self.player.y = level_data[f"level{self.level}"]["start_pos"]
+        self.load_level_pickups_from_data()
         
     def run(self) -> None:
         """
@@ -410,6 +417,8 @@ class Game:
                     # restart or quit based on user input
                     if result == "restart":
                         self.restart_game()
+                        # Full restart: re-enter run() so all local runtime state is rebuilt.
+                        return self.run()
                     elif result == "quit":
                         running = False
                 elif event.type == pygame.KEYDOWN:
@@ -431,6 +440,8 @@ class Game:
                     #if event.key == pygame.K_z:
                         #print(f"inventory items {self.inventory.items}")
                     if event.key == pygame.K_e:
+                        if self.try_pickup_nearby_item():
+                            continue
                         if self.level == 1:
                             # On level 1 there is a chest, if you get close enough a letter should popup when you press e
                             # This is the logic for showing the letter and playing the minecraft chest sound
@@ -546,13 +557,17 @@ class Game:
                             # show the popup to press e to interact with the chest
                             self.show_press_e = True
                             break
-                
-                elif self.level == 2:
-                    for lever in self.lever_list:
-                        if lever.is_near_player(self.player) and not lever.is_pulled:
-                            # same as above but for the levers
-                            self.show_press_e = True
-                            break
+
+                if not self.show_press_e and self.get_nearby_pickup() is not None:
+                    self.show_press_e = True
+
+                if self.level == 2:
+                    if not self.show_press_e:
+                        for lever in self.lever_list:
+                            if lever.is_near_player(self.player) and not lever.is_pulled:
+                                # same as above but for the levers
+                                self.show_press_e = True
+                                break
 
                 # update enemies every frame
                 for enemy in list(self.enemies):
@@ -619,6 +634,31 @@ class Game:
 
             
             #draw player
+            for pickup in self.level_pickups:
+                pickup_x = pickup["x"]
+                pickup_y = pickup["y"]
+                pickup_screen_x = pickup_x * camera.zoom + camera.offset_x
+                pickup_screen_y = pickup_y * camera.zoom + camera.offset_y
+                pulse = int(22 + 10 * math.sin(pygame.time.get_ticks() * 0.006))
+                glow_radius = max(3, int(5 * camera.zoom))
+                pygame.draw.circle(self.screen, (205 + pulse, 205 + pulse, 120), (int(pickup_screen_x), int(pickup_screen_y)), glow_radius)
+
+                item_obj = self.item_catalog.get(pickup["item_type"])
+                if item_obj and hasattr(item_obj, "image"):
+                    base_icon = item_obj.image
+                    src_w, src_h = base_icon.get_width(), base_icon.get_height()
+                    if src_w <= 0 or src_h <= 0:
+                        continue
+
+                    # Keep pickup size exactly the same as the equipped sprite size.
+                    draw_w = int(src_w)
+                    draw_h = int(src_h)
+
+                    item_icon = base_icon
+                    icon_x = int(pickup_screen_x - draw_w // 2)
+                    icon_y = int(pickup_screen_y - draw_h // 2 - 1)
+                    self.screen.blit(item_icon, (icon_x, icon_y))
+
             self.player.draw(self.screen, camera)
 
             # Cull and draw enemies
@@ -770,9 +810,20 @@ class Game:
         clock = pygame.time.Clock() 
         fade_out_duration = 1000 
         fade_out_start= pygame.time.get_ticks()
+        transition_fps = self.FPS if self.FPS > 0 else 60
         while True:
+            # Keep the window responsive while transitioning.
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.VIDEORESIZE:
+                    self.screen_width, self.screen_height = event.w, event.h
+                    self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
+                    fade_surface = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+
             # get time elapsed since last frame to update fade animation smoothly
-            dt= clock.tick(self.FPS) 
+            dt= clock.tick(transition_fps) 
             elapsed =pygame.time.get_ticks() - fade_out_start
 
             if elapsed> fade_out_duration: break
@@ -854,6 +905,8 @@ class Game:
                 lever_id = f"lever{i+1}"
                 lever = Lever(lever_info['x'],lever_info['y'],  lever_info['type'],lever_id=lever_id)
                 self.lever_list.append(lever)
+
+        self.load_level_pickups_from_data()
 
          # get lighting level from json file for repective level
         self.lightlevel =level_data[f"level{self.level}"]["lighting"]
@@ -1055,6 +1108,91 @@ class Game:
                     pygame.time.set_timer(event_id, i* 70,1)  # 1 = fire once only
         self.experience_bar.update(self.xp)
 
+    def find_next_available_inventory_slot(self) -> int | None:
+        """Return first empty inventory slot index, or ``None`` if full."""
+        for slot in self.inventory.items:
+            if slot['item'] is None:
+                return slot['slot']
+        return None
+
+    def resolve_pickup_position(self, pickup_data: dict) -> tuple[float, float]:
+        """Resolve pickup coordinates from JSON (numbers or ``center``)."""
+        raw_x = pickup_data.get("x", "center")
+        raw_y = pickup_data.get("y", "center")
+
+        if isinstance(raw_x, str) and raw_x.lower() == "center":
+            x = self.game_map.width // 2
+        else:
+            x = float(raw_x)
+
+        if isinstance(raw_y, str) and raw_y.lower() == "center":
+            y = self.game_map.height // 2
+        else:
+            y = float(raw_y)
+
+        return x, y
+
+    def load_level_pickups_from_data(self) -> None:
+        """Load configured item pickups for the current level from JSON."""
+        level_key = f"level{self.level}"
+        level_info = level_data.get(level_key, {})
+        pickup_definitions = level_info.get("item_pickups", [])
+        self.level_pickups = []
+
+        for pickup_data in pickup_definitions:
+            item_type = pickup_data.get("item_type") or pickup_data.get("item")
+            if not item_type:
+                continue
+            if item_type in self.collected_item_types:
+                continue
+            if item_type not in self.item_catalog:
+                continue
+
+            pickup_x, pickup_y = self.resolve_pickup_position(pickup_data)
+            pickup_radius = int(pickup_data.get("radius", self.default_pickup_radius))
+
+            self.level_pickups.append({
+                "item_type": item_type,
+                "x": pickup_x,
+                "y": pickup_y,
+                "radius": pickup_radius,
+            })
+
+    def get_nearby_pickup(self) -> dict | None:
+        """Return the first pickup in range of the player, if any."""
+        player_center_x = self.player.x + self.player.width / 2
+        player_center_y = self.player.y + self.player.height / 2
+
+        for pickup in self.level_pickups:
+            dx = player_center_x - pickup["x"]
+            dy = player_center_y - pickup["y"]
+            if dx * dx + dy * dy <= pickup["radius"] * pickup["radius"]:
+                return pickup
+        return None
+
+    def try_pickup_nearby_item(self) -> bool:
+        """Collect nearby item and put it in the next free inventory slot."""
+        pickup = self.get_nearby_pickup()
+        if pickup is None:
+            return False
+
+        slot = self.find_next_available_inventory_slot()
+        if slot is None:
+            print("Inventory full. Cannot pick up item.")
+            return False
+
+        item_type = pickup["item_type"]
+        item_obj = self.item_catalog[item_type]
+        self.inventory.add_item(item_obj, slot)
+        self.collected_item_types.add(item_type)
+        self.level_pickups.remove(pickup)
+
+        self.current_weapon_index = slot
+        self.inventory.slot = slot
+        self.current_weapon = self.inventory[self.current_weapon_index]['item']
+        print(f"Picked up {item_type} in slot {slot + 1}")
+        return True
+
 
     def restart_game(self) -> None:
         """Reset all game state back to level 0 for a new run."""
@@ -1071,6 +1209,16 @@ class Game:
         
         # Reset XP
         self.xp = 0
+
+        # Reset weapon progression: start with pistol only
+        for slot_data in self.inventory.items:
+            slot_data['item'] = None
+        self.inventory.add_item(self.gun, 0)
+        self.collected_item_types = {"gun"}
+        self.level_pickups = []
+        self.current_weapon_index = 0
+        self.inventory.slot = 0
+        self.current_weapon = self.inventory[self.current_weapon_index]['item']
         
         #reset music
         self.music.play_level_music(0)
@@ -1123,3 +1271,4 @@ class Game:
         self.lightlevel = level_data["level0"]["lighting"]
         #collision data reload
         self.map_needs_collision_update = True
+        self.load_level_pickups_from_data()

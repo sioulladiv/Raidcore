@@ -6,11 +6,11 @@ from ui.menu import BunkerMenu
 if __name__ == "__main__":
     pygame.init()
     info = pygame.display.Info()
-    # get screen dimensions for scaling for later
+    # get screen dimensions for scaling for wlaterw
     screen_width: int = info.current_w
     screen_height: int = info.current_h
 
-    #screen size of pc used to design game
+    #screen size of pc used to ddesign game
     base_width: int = 2560
     base_height: int = 1440
     displaySize: float = screen_width / base_width

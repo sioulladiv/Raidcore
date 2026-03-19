@@ -113,8 +113,8 @@ class FrustumCuller:
         Filter a list of entities to only include visible ones.
         
         Args:
-            entities: List of entity objects
-            camera: Camera object
+            entities: List of entity objects    
+            camera: Camera object   
             margin: Additional margin for culling
             
         Returns:
